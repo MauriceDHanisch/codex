@@ -1,0 +1,13 @@
+---
+source: tui/src/bottom_pane/chat_composer.rs
+expression: terminal.backend()
+---
+"  ● 1 prompt stashed                                                                                "
+"› Prompt stashed. Press ctrl + s to restore.                                                        "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"  ? for shortcuts                                                                100% context left  "

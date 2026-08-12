@@ -144,7 +144,7 @@ pub struct TuiComposerKeymap {
     pub toggle_shortcuts: Option<KeybindingsSpec>,
     /// Open reverse history search or move to the previous match.
     pub history_search_previous: Option<KeybindingsSpec>,
-    /// Move to the next match in reverse history search.
+    /// Stash the draft, or move to the next match in reverse history search.
     pub history_search_next: Option<KeybindingsSpec>,
 }
 

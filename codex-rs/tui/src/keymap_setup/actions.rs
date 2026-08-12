@@ -100,7 +100,7 @@ pub(super) const KEYMAP_ACTIONS: &[KeymapActionDescriptor] = &[
     action("composer", "Composer", "queue", "Queue the draft while a task is running."),
     action("composer", "Composer", "toggle_shortcuts", "Show or hide the composer shortcut overlay."),
     action("composer", "Composer", "history_search_previous", "Open history search or move to the previous match."),
-    action("composer", "Composer", "history_search_next", "Move to the next history search match."),
+    action("composer", "Composer", "history_search_next", "Stash the draft, or move to the next history search match."),
     action("editor", "Editor", "insert_newline", "Insert a newline in the editor."),
     action("editor", "Editor", "move_left", "Move the cursor left."),
     action("editor", "Editor", "move_right", "Move the cursor right."),
@@ -202,6 +202,9 @@ pub(super) const KEYMAP_ACTIONS: &[KeymapActionDescriptor] = &[
 /// parsed back into an action name, because underscores and casing are part of
 /// the stable config contract.
 pub(super) fn action_label(action: &str) -> String {
+    if action == "history_search_next" {
+        return "Stash / History Next".to_string();
+    }
     action
         .split('_')
         .map(|word| {

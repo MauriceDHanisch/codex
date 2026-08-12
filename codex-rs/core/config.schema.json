@@ -4331,7 +4331,7 @@
               "$ref": "#/definitions/KeybindingsSpec"
             }
           ],
-          "description": "Move to the next match in reverse history search."
+          "description": "Stash the draft, or move to the next match in reverse history search."
         },
         "history_search_previous": {
           "allOf": [

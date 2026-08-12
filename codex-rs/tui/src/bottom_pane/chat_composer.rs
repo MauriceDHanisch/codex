@@ -70,6 +70,15 @@
 //! keeps prompt-history search; explicitly configured keybindings retain precedence.
 //! Vim queries stay draft-local.
 //!
+//! # Prompt Stash (Ctrl+S)
+//!
+//! Outside history search, `Ctrl+S` stores the full composer draft and clears the input. Pressing
+//! it again restores the stashed draft. If the user types a second draft before restoring, the
+//! shortcut swaps the current and stashed drafts. Text elements, image attachments, mention
+//! bindings, pending paste payloads, shell mode, and cursor position move together as one draft.
+//! While Ctrl+R history search is active, Ctrl+S keeps its existing role of moving to the next
+//! search match.
+//!
 //! Slash commands are staged for local history instead of being recorded immediately. Command
 //! recall is a two-phase handoff: stage the submitted slash text here, then record it after
 //! `ChatWidget` dispatches the command.
@@ -307,6 +316,7 @@ mod footer_state;
 mod history_search;
 mod popup_state;
 mod reconnect;
+mod prompt_stash;
 mod slash_input;
 mod vim_history;
 mod vim_search;
@@ -543,6 +553,7 @@ pub(crate) struct ChatComposer {
     side_conversation_active: bool,
     history_search: Option<HistorySearchSession>,
     vim_history: VimHistory,
+    stashed_draft: Option<ComposerDraft>,
     submit_keys: Vec<KeyBinding>,
     queue_keys: Vec<KeyBinding>,
     toggle_shortcuts_keys: Vec<KeyBinding>,
@@ -718,6 +729,7 @@ impl ChatComposer {
             side_conversation_active: false,
             history_search: None,
             vim_history: VimHistory::default(),
+            stashed_draft: None,
             submit_keys: vec![key_hint::plain(KeyCode::Enter)],
             queue_keys: vec![key_hint::plain(KeyCode::Tab)],
             toggle_shortcuts_keys: vec![
@@ -2016,6 +2028,10 @@ impl ChatComposer {
 
         if Self::is_history_search_key(&key_event, &self.history_search_previous_keys) {
             return self.begin_history_search();
+        }
+
+        if self.is_prompt_stash_key(&key_event) {
+            return self.toggle_prompt_stash();
         }
 
         let result = match &mut self.popups.active {
@@ -4937,6 +4953,15 @@ impl ChatComposer {
         }
         let style = user_message_style();
         Block::default().style(style).render(composer_rect, buf);
+        if let Some(line) = self.prompt_stash_indicator_line() {
+            let indicator_rect = Rect::new(
+                composer_rect.x.saturating_add(LIVE_PREFIX_COLS),
+                composer_rect.y,
+                composer_rect.width.saturating_sub(LIVE_PREFIX_COLS),
+                1,
+            );
+            line.render(indicator_rect, buf);
+        }
         if !remote_images_rect.is_empty() {
             Paragraph::new(self.attachments.remote_image_lines())
                 .style(style)
@@ -5004,7 +5029,8 @@ impl ChatComposer {
         }
         if !self.draft.input_enabled || textarea_is_empty {
             let text = if self.draft.input_enabled {
-                self.placeholder_text.as_str().to_string()
+                self.prompt_stash_placeholder()
+                    .unwrap_or_else(|| self.placeholder_text.clone())
             } else {
                 self.draft
                     .input_disabled_placeholder
@@ -5050,6 +5076,8 @@ mod agents_navigation_tests;
 mod effort_tests;
 
 #[cfg(test)]
+#[path = "chat_composer/prompt_stash_tests.rs"]
+mod prompt_stash_tests;
 mod tests {
     use super::attachment_state::AttachedImage;
     use super::*;
@@ -5406,6 +5434,16 @@ mod tests {
                     key_hint::ctrl(KeyCode::Char('c')),
                     /*has_focus*/ true,
                 );
+            },
+        );
+
+        snapshot_composer_state(
+            "prompt_stash_placeholder",
+            /*enhanced_keys_supported*/ true,
+            |composer| {
+                composer.set_text_content("review this draft".to_string(), Vec::new(), Vec::new());
+                let _ = composer
+                    .handle_key_event(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
             },
         );
 

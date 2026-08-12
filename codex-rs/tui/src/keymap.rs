@@ -139,7 +139,7 @@ pub(crate) struct ComposerKeymap {
     pub(crate) toggle_shortcuts: Vec<KeyBinding>,
     /// Open reverse history search or move to the previous match.
     pub(crate) history_search_previous: Vec<KeyBinding>,
-    /// Move to the next match in reverse history search.
+    /// Stash the draft, or move to the next match in reverse history search.
     pub(crate) history_search_next: Vec<KeyBinding>,
 }
 

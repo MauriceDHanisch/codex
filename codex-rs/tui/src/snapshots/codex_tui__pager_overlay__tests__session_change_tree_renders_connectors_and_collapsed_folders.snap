@@ -1,0 +1,89 @@
+---
+source: tui/src/pager_overlay.rs
+expression: "format!(\"expanded:\\n{expanded:?}\\n\\ncollapsed:\\n{collapsed:?}\")"
+---
+expanded:
+Buffer {
+    area: Rect { x: 0, y: 0, width: 80, height: 14 },
+    content: [
+        "/ C H A N G E S  ·  T R E E                                                     ",
+        "                                                                                ",
+        "3 files changed                                                                 ",
+        "├─ ▾ src                                                                        ",
+        "│  ├─ › M  lib.rs (+1 -1)                                                       ",
+        "│  └─ ▾ nested                                                                  ",
+        "│     └─   M  mod.rs (+1 -1)                                                    ",
+        "└─ ▾ tests                                                                      ",
+        "   └─   M  tree.rs (+1 -1)                                                      ",
+        "                                                                                ",
+        "                                                                                ",
+        "                                                                                ",
+        "↑↓ move   ←→ folder   enter open/toggle   t flat   esc                          ",
+        "                                                                                ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 27, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 15, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 8, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 4, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
+        x: 18, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 4, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 21, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 22, y: 4, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 24, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 14, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 22, y: 6, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 24, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 25, y: 6, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 27, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 7, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 10, y: 7, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 20, y: 8, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 22, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 23, y: 8, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 25, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 12, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 54, y: 12, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}
+
+collapsed:
+Buffer {
+    area: Rect { x: 0, y: 0, width: 80, height: 14 },
+    content: [
+        "/ C H A N G E S  ·  T R E E                                                     ",
+        "                                                                                ",
+        "3 files changed                                                                 ",
+        "├─ ▸ src                                                                        ",
+        "└─ ▾ tests                                                                      ",
+        "   └─   M  tree.rs (+1 -1)                                                      ",
+        "                                                                                ",
+        "                                                                                ",
+        "                                                                                ",
+        "                                                                                ",
+        "                                                                                ",
+        "                                                                                ",
+        "↑↓ move   ←→ folder   enter open/toggle   t flat   esc                          ",
+        "                                                                                ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 27, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 15, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 3, fg: Cyan, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 8, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 10, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 20, y: 5, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 22, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 23, y: 5, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 25, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 12, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 54, y: 12, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

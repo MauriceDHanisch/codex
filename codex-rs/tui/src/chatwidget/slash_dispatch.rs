@@ -446,6 +446,9 @@ impl ChatWidget {
                     tx.send(AppEvent::DiffResult(cwd, text));
                 });
             }
+            SlashCommand::Changes => {
+                self.app_event_tx.send(AppEvent::OpenChanges);
+            }
             SlashCommand::Mention => {
                 self.insert_str("@");
             }
@@ -786,6 +789,12 @@ impl ChatWidget {
                 self.app_event_tx.send(AppEvent::ClearUi {
                     name: Some(trimmed.to_string()),
                 });
+            }
+            SlashCommand::Changes if trimmed.eq_ignore_ascii_case("clear") => {
+                self.app_event_tx.send(AppEvent::ClearSessionChanges);
+            }
+            SlashCommand::Changes => {
+                self.add_error_message("Usage: /changes [clear]".to_string());
             }
             SlashCommand::Fork if !trimmed.is_empty() => {
                 self.app_event_tx.send(AppEvent::ForkCurrentSession {
@@ -1149,6 +1158,7 @@ impl ChatWidget {
             | SlashCommand::Raw
             | SlashCommand::Vim
             | SlashCommand::Diff
+            | SlashCommand::Changes
             | SlashCommand::App
             | SlashCommand::Rename
             | SlashCommand::Recap

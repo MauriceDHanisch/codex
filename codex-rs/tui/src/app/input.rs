@@ -381,6 +381,25 @@ impl App {
             return;
         }
 
+        if app_keymap_shortcuts_available && self.keymap.app.open_changes.is_pressed(key_event) {
+            self.open_changes_overlay(tui);
+            return;
+        }
+
+        if app_keymap_shortcuts_available
+            && self.keymap.app.open_external_editor.is_pressed(key_event)
+        {
+            // Only launch the external editor if there is no overlay and the bottom pane is not in use.
+            // Note that it can be launched while a task is running to enable editing while the previous turn is ongoing.
+            if self.overlay.is_none()
+                && self.chat_widget.can_launch_external_editor()
+                && self.chat_widget.external_editor_state() == ExternalEditorState::Closed
+            {
+                self.request_external_editor_launch(tui);
+            }
+            return;
+        }
+
         if matches!(key_event.code, KeyCode::Esc)
             && matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat)
         {

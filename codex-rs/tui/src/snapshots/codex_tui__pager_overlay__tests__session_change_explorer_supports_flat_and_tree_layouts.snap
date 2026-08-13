@@ -1,0 +1,81 @@
+---
+source: tui/src/pager_overlay.rs
+expression: "format!(\"flat:\\n{flat:?}\\n\\ntree:\\n{tree:?}\")"
+---
+flat:
+Buffer {
+    area: Rect { x: 0, y: 0, width: 60, height: 12 },
+    content: [
+        "/ C H A N G E S                                             ",
+        "                                                            ",
+        "2 files changed                                             ",
+        "› A  tui/src/changes_overlay.rs (+1 -0)                     ",
+        "  M  tui/src/footer.rs (+1 -1)                              ",
+        "                                                            ",
+        "                                                            ",
+        "                                                            ",
+        "                                                            ",
+        "                                                            ",
+        "↑↓ move   enter open   t tree   esc                         ",
+        "                                                            ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 15, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 15, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 3, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
+        x: 32, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 33, y: 3, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 35, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 36, y: 3, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 38, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 24, y: 4, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 26, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 27, y: 4, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 29, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 35, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}
+
+tree:
+Buffer {
+    area: Rect { x: 0, y: 0, width: 60, height: 12 },
+    content: [
+        "/ C H A N G E S  ·  T R E E                                 ",
+        "                                                            ",
+        "2 files changed                                             ",
+        "└─ ▾ tui                                                    ",
+        "   └─ ▾ src                                                 ",
+        "      ├─ › A  changes_overlay.rs (+1 -0)                    ",
+        "      └─   M  footer.rs (+1 -1)                             ",
+        "                                                            ",
+        "                                                            ",
+        "                                                            ",
+        "↑↓ move   ←→ folder   enter open/toggle   t flat   esc      ",
+        "                                                            ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 27, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 15, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 8, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 11, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 5, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
+        x: 33, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 34, y: 5, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 36, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 37, y: 5, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 39, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 25, y: 6, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 27, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 28, y: 6, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 30, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 54, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

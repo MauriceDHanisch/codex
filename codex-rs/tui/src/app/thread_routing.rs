@@ -1343,12 +1343,18 @@ impl App {
             self.chat_widget.set_token_info(/*info*/ None);
         }
         match presentation {
-            ThreadAttachPresentation::SessionLineage => {
+            ThreadAttachPresentation::SessionLineage | ThreadAttachPresentation::Fork => {
                 self.chat_widget.handle_thread_session(session);
             }
-            ThreadAttachPresentation::PromptEdit => {
+            ThreadAttachPresentation::PromptEditFork => {
                 self.chat_widget.handle_prompt_edit_thread_session(session);
             }
+        }
+        if matches!(
+            presentation,
+            ThreadAttachPresentation::Fork | ThreadAttachPresentation::PromptEditFork
+        ) {
+            self.chat_widget.clear_session_file_changes();
         }
         let should_buffer_initial_replay = !turns.is_empty();
         if should_buffer_initial_replay {
@@ -1366,7 +1372,7 @@ impl App {
             self.app_event_tx
                 .send(AppEvent::EndInitialHistoryReplayBuffer);
         }
-        if matches!(presentation, ThreadAttachPresentation::PromptEdit) {
+        if matches!(presentation, ThreadAttachPresentation::PromptEditFork) {
             self.chat_widget.emit_prompt_edit_thread_event();
         }
         let pending = std::mem::take(&mut self.pending_primary_events);

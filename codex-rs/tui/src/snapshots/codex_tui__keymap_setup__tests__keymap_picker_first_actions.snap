@@ -16,6 +16,7 @@ tab: Approval (8 selectable)
 tab: Debug (1 selectable)
 Open Agents | unbound | Global open_agents Open Agents Open the shared agent-session overview. unbound Default
 Open Transcript | ctrl-t | Global open_transcript Open Transcript Open the transcript overlay. ctrl-t Default
+Open Changes | ctrl-x | Global open_changes Open Changes Open the session changes explorer. ctrl-x Default
 Open External Editor | ctrl-g | Global open_external_editor Open External Editor Open the current draft in an external editor. ctrl-g Default
 Copy | ctrl-o | Global copy Copy Copy the last agent response to the clipboard. ctrl-o Default
 Clear Terminal | ctrl-l | Global clear_terminal Clear Terminal Clear the terminal UI. ctrl-l Default

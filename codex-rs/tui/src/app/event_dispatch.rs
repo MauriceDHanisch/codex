@@ -384,7 +384,7 @@ impl App {
                                 .replace_chat_widget_with_app_server_thread(
                                     tui,
                                     forked,
-                                    ThreadAttachPresentation::SessionLineage,
+                                    ThreadAttachPresentation::Fork,
                                     /*initial_user_message*/ None,
                                 )
                                 .await
@@ -544,7 +544,7 @@ impl App {
                             .replace_chat_widget_with_app_server_thread(
                                 tui,
                                 forked,
-                                ThreadAttachPresentation::PromptEdit,
+                                ThreadAttachPresentation::PromptEditFork,
                                 /*initial_user_message*/ None,
                             )
                             .await
@@ -842,6 +842,16 @@ impl App {
                     self.keymap.pager.clone(),
                 ));
                 tui.frame_requester().schedule_frame();
+            }
+            AppEvent::OpenChanges => {
+                self.open_changes_overlay(tui);
+            }
+            AppEvent::ClearSessionChanges => {
+                self.chat_widget.clear_session_file_changes();
+                self.chat_widget.add_info_message(
+                    "Changes baseline cleared. New edits will be tracked.".to_string(),
+                    /*hint*/ None,
+                );
             }
             AppEvent::OpenAppLink {
                 app_id,
@@ -3235,6 +3245,17 @@ impl App {
                 AppRunControl::Exit(ExitReason::UserRequested)
             }
         }
+    }
+
+    pub(super) fn open_changes_overlay(&mut self, tui: &mut tui::Tui) {
+        let _ = tui.enter_alt_screen();
+        let (changes, cwd) = self.chat_widget.session_file_changes();
+        self.overlay = Some(Overlay::new_changes(
+            changes,
+            cwd,
+            self.keymap.pager.clone(),
+        ));
+        tui.frame_requester().schedule_frame();
     }
 
     pub(super) async fn archive_current_thread(

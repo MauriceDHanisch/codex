@@ -86,6 +86,7 @@ impl KeymapActionDescriptor {
 pub(super) const KEYMAP_ACTIONS: &[KeymapActionDescriptor] = &[
     action("global", "Global", "open_agents", "Open the shared agent-session overview."),
     action("global", "Global", "open_transcript", "Open the transcript overlay."),
+    action("global", "Global", "open_changes", "Open the session changes explorer."),
     action("global", "Global", "open_external_editor", "Open the current draft in an external editor."),
     action("global", "Global", "copy", "Copy the last agent response to the clipboard."),
     action("global", "Global", "clear_terminal", "Clear the terminal UI."),
@@ -261,6 +262,7 @@ pub(super) fn binding_slot<'a>(
     match (context, action) {
         ("global", "open_agents") => Some(&mut keymap.global.open_agents),
         ("global", "open_transcript") => Some(&mut keymap.global.open_transcript),
+        ("global", "open_changes") => Some(&mut keymap.global.open_changes),
         ("global", "open_external_editor") => Some(&mut keymap.global.open_external_editor),
         ("global", "copy") => Some(&mut keymap.global.copy),
         ("global", "clear_terminal") => Some(&mut keymap.global.clear_terminal),

@@ -48,6 +48,7 @@ pub enum SlashCommand {
     Export,
     Raw,
     Diff,
+    Changes,
     Mention,
     Status,
     Cd,
@@ -105,6 +106,7 @@ impl SlashCommand {
             SlashCommand::Export => "export the conversation as markdown",
             SlashCommand::Raw => "toggle raw scrollback mode for copy-friendly terminal selection",
             SlashCommand::Diff => "show git diff (including untracked files)",
+            SlashCommand::Changes => "explore changes made by this chat",
             SlashCommand::Mention => "mention a file",
             SlashCommand::Skills => "use skills to improve how Codex performs specific tasks",
             SlashCommand::Import => "import setup, this project, and recent chats from Claude Code",
@@ -167,6 +169,7 @@ impl SlashCommand {
                 | SlashCommand::Rename
                 | SlashCommand::New
                 | SlashCommand::Clear
+                | SlashCommand::Changes
                 | SlashCommand::Fork
                 | SlashCommand::Plan
                 | SlashCommand::Goal
@@ -195,6 +198,7 @@ impl SlashCommand {
                 | SlashCommand::Export
                 | SlashCommand::Raw
                 | SlashCommand::Diff
+                | SlashCommand::Changes
                 | SlashCommand::Mention
                 | SlashCommand::Status
                 | SlashCommand::Pwd
@@ -229,6 +233,7 @@ impl SlashCommand {
             | SlashCommand::MemoryDrop
             | SlashCommand::MemoryUpdate => false,
             SlashCommand::Diff
+            | SlashCommand::Changes
             | SlashCommand::Resume
             | SlashCommand::Model
             | SlashCommand::Personality

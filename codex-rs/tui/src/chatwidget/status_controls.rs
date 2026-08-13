@@ -85,6 +85,15 @@ impl ChatWidget {
         self.bottom_pane.set_active_agent_label(active_agent_label);
     }
 
+    pub(crate) fn set_custom_status_line_agent_context(
+        &mut self,
+        active_agents: usize,
+        agent_label: Option<String>,
+    ) {
+        self.custom_status_line_active_agents = active_agents;
+        self.custom_status_line_agent_label = agent_label;
+    }
+
     /// Recomputes footer status-line content from config and current runtime state.
     ///
     /// This method is the status-line orchestrator: it parses configured item identifiers,

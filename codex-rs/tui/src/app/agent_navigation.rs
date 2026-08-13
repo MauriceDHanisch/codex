@@ -249,6 +249,45 @@ impl AgentNavigationState {
             .any(|thread_id| Some(*thread_id) != primary_thread_id)
     }
 
+    pub(crate) fn active_subagent_count(&self, primary_thread_id: Option<ThreadId>) -> usize {
+        self.threads
+            .iter()
+            .filter(|(thread_id, entry)| {
+                Some(**thread_id) != primary_thread_id && entry.is_running && !entry.is_closed
+            })
+            .count()
+    }
+
+    pub(crate) fn agent_label(
+        &self,
+        thread_id: ThreadId,
+        primary_thread_id: Option<ThreadId>,
+    ) -> String {
+        let is_primary = primary_thread_id == Some(thread_id);
+        self.threads
+            .get(&thread_id)
+            .map(|entry| {
+                if !is_primary
+                    && let Some(agent_path) = entry
+                        .agent_path
+                        .as_deref()
+                        .filter(|agent_path| !agent_path.trim().is_empty())
+                {
+                    return format!("`{agent_path}`");
+                }
+                format_agent_picker_item_name(
+                    entry.agent_nickname.as_deref(),
+                    entry.agent_role.as_deref(),
+                    is_primary,
+                )
+            })
+            .unwrap_or_else(|| {
+                format_agent_picker_item_name(
+                    /*agent_nickname*/ None, /*agent_role*/ None, is_primary,
+                )
+            })
+    }
+
     /// Returns live picker rows in the same order users cycle through them.
     ///
     /// The `order` vector is intentionally historical and may briefly contain thread ids that no
@@ -316,49 +355,6 @@ impl AgentNavigationState {
             }
         };
         Some(ordered_threads[next_idx].0)
-    }
-
-    /// Derives the contextual footer label for the currently displayed thread.
-    ///
-    /// This intentionally returns `None` until there is more than one tracked thread so
-    /// single-thread sessions do not waste footer space restating the obvious. When metadata for
-    /// the displayed thread is missing, the label falls back to the same generic naming rules used
-    /// by the picker.
-    pub(crate) fn active_agent_label(
-        &self,
-        current_displayed_thread_id: Option<ThreadId>,
-        primary_thread_id: Option<ThreadId>,
-    ) -> Option<String> {
-        if self.threads.len() <= 1 {
-            return None;
-        }
-
-        let thread_id = current_displayed_thread_id?;
-        let is_primary = primary_thread_id == Some(thread_id);
-        Some(
-            self.threads
-                .get(&thread_id)
-                .map(|entry| {
-                    if !is_primary
-                        && let Some(agent_path) = entry
-                            .agent_path
-                            .as_deref()
-                            .filter(|agent_path| !agent_path.trim().is_empty())
-                    {
-                        return format!("`{agent_path}`");
-                    }
-                    format_agent_picker_item_name(
-                        entry.agent_nickname.as_deref(),
-                        entry.agent_role.as_deref(),
-                        is_primary,
-                    )
-                })
-                .unwrap_or_else(|| {
-                    format_agent_picker_item_name(
-                        /*agent_nickname*/ None, /*agent_role*/ None, is_primary,
-                    )
-                }),
-        )
     }
 
     /// Builds the `/agent` picker subtitle from the same canonical bindings used by key handling.
@@ -501,16 +497,15 @@ mod tests {
     }
 
     #[test]
-    fn active_agent_label_tracks_current_thread() {
-        let (state, main_thread_id, first_agent_id, _) = populated_state();
+    fn active_subagent_count_excludes_primary_and_closed_agents() {
+        let (mut state, main_thread_id, first_agent_id, second_agent_id) = populated_state();
 
-        assert_eq!(
-            state.active_agent_label(Some(first_agent_id), Some(main_thread_id)),
-            Some("Robie [explorer]".to_string())
-        );
-        assert_eq!(
-            state.active_agent_label(Some(main_thread_id), Some(main_thread_id)),
-            Some("Main [default]".to_string())
-        );
+        state.mark_running(main_thread_id);
+        state.mark_running(first_agent_id);
+        state.mark_running(second_agent_id);
+        assert_eq!(state.active_subagent_count(Some(main_thread_id)), 2);
+
+        state.mark_closed(first_agent_id);
+        assert_eq!(state.active_subagent_count(Some(main_thread_id)), 1);
     }
 }

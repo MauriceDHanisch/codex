@@ -670,6 +670,8 @@ pub(crate) struct ChatWidget {
     thread_name: Option<String>,
     thread_rename_block_message: Option<String>,
     active_side_conversation: bool,
+    custom_status_line_active_agents: usize,
+    custom_status_line_agent_label: Option<String>,
     blocks_direct_input: bool,
     normal_placeholder_text: String,
     side_placeholder_text: String,

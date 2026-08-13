@@ -3862,7 +3862,11 @@ impl ChatComposer {
                 reasoning_down: self.footer.reasoning_down_key,
                 reasoning_up: self.footer.reasoning_up_key,
             },
-            active_agent_label: self.footer.active_agent_label.clone(),
+            active_agent_label: if self.side_conversation_active {
+                Some(crate::bottom_pane::footer::SIDE_CONVERSATION_LABEL.to_string())
+            } else {
+                self.footer.active_agent_label.clone()
+            },
         }
     }
 

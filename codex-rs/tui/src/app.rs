@@ -4,6 +4,7 @@
 //! the focused app submodules.
 
 use crate::AppServerTarget;
+use crate::app::session_lifecycle::ThreadAttachPresentation;
 use crate::app_backtrack::BacktrackState;
 use crate::app_command::AppCommand;
 use crate::app_event::AppEvent;

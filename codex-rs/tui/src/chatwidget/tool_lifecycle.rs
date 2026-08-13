@@ -28,6 +28,10 @@ impl ChatWidget {
         )
     }
 
+    pub(crate) fn clear_session_file_changes(&mut self) {
+        self.session_file_changes.clear();
+    }
+
     pub(super) fn on_patch_apply_begin(&mut self, changes: HashMap<PathBuf, FileChange>) {
         for (path, change) in &changes {
             let session_path = session_change_key(&self.session_file_changes, path);

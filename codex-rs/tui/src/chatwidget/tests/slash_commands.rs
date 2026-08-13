@@ -2599,6 +2599,36 @@ async fn slash_clear_requests_ui_clear_when_idle() {
 }
 
 #[tokio::test]
+async fn slash_changes_clear_resets_the_session_changes_baseline() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.bottom_pane
+        .set_composer_text("/changes clear".to_string(), Vec::new(), Vec::new());
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_matches!(rx.try_recv(), Ok(AppEvent::ClearSessionChanges));
+}
+
+#[tokio::test]
+async fn clearing_session_changes_discards_prior_file_changes() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.session_file_changes.insert(
+        PathBuf::from("example.txt"),
+        Arc::new(crate::diff_model::SessionFileChange::new(
+            Some("before\n".to_string()),
+            FileChange::Update {
+                unified_diff: "@@ -1 +1 @@\n-before\n+after".to_string(),
+                move_path: None,
+            },
+        )),
+    );
+
+    chat.clear_session_file_changes();
+
+    assert!(chat.session_file_changes.is_empty());
+}
+
+#[tokio::test]
 async fn slash_new_with_name_requests_named_session() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.bottom_pane

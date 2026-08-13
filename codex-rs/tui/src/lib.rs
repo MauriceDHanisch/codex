@@ -1666,6 +1666,7 @@ async fn run_ratatui_app(
     ) {
         config.startup_warnings.push(w);
     }
+    crate::style::set_user_message_background_mode(config.tui_user_message_background);
 
     set_default_client_residency_requirement(config.enforce_residency.value());
     let should_show_trust_screen = should_show_trust_screen(&config);

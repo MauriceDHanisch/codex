@@ -55,6 +55,7 @@ use codex_config::types::TuiKeymap;
 use codex_config::types::TuiNotificationSettings;
 use codex_config::types::TuiPetAnchor;
 use codex_config::types::UriBasedFileOpener;
+use codex_config::types::UserMessageBackgroundMode;
 use codex_config::types::WindowsSandboxModeToml;
 use codex_core_plugins::PluginLoadOutcome;
 use codex_core_plugins::PluginsConfigInput;
@@ -764,6 +765,8 @@ pub struct Config {
     /// - `always`: Always use alternate screen.
     /// - `never`: Never use alternate screen (inline mode, preserves scrollback).
     pub tui_alternate_screen: AltScreenMode,
+    /// This is the same `tui.user_message_background` value from `config.toml`.
+    pub tui_user_message_background: UserMessageBackgroundMode,
     /// Ordered list of status line item identifiers for the TUI.
     ///
     /// When unset, the TUI defaults to: `model-with-reasoning` and `current-dir`.
@@ -4354,6 +4357,11 @@ impl Config {
                 .tui
                 .as_ref()
                 .map(|t| t.alternate_screen)
+                .unwrap_or_default(),
+            tui_user_message_background: cfg
+                .tui
+                .as_ref()
+                .map(|t| t.user_message_background)
                 .unwrap_or_default(),
             tui_status_line: cfg.tui.as_ref().and_then(|t| t.status_line.clone()),
             tui_status_line_command: cfg

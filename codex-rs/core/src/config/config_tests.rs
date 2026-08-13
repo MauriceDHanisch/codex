@@ -68,6 +68,7 @@ use codex_config::types::Tui;
 use codex_config::types::TuiKeymap;
 use codex_config::types::TuiNotificationSettings;
 use codex_config::types::TuiPetAnchor;
+use codex_config::types::UserMessageBackgroundMode;
 use codex_config::types::WindowsSandboxModeToml;
 use codex_config::types::WindowsToml;
 use codex_exec_server::LOCAL_FS;
@@ -1225,6 +1226,7 @@ fn config_toml_deserializes_model_availability_nux() {
             vim_mode_default: false,
             raw_output_mode: false,
             alternate_screen: AltScreenMode::default(),
+            user_message_background: UserMessageBackgroundMode::Auto,
             status_line: None,
             status_line_command: None,
             status_line_use_colors: true,
@@ -4184,6 +4186,28 @@ theme = "dracula"
 }
 
 #[test]
+fn tui_theme_defaults_to_none() {
+    let cfg = r#"
+[tui]
+"#;
+    let parsed = toml::from_str::<ConfigToml>(cfg).expect("TOML deserialization should succeed");
+    assert_eq!(parsed.tui.as_ref().and_then(|t| t.theme.as_deref()), None);
+}
+
+#[test]
+fn tui_user_message_background_deserializes_from_toml() {
+    let cfg = r#"
+[tui]
+user_message_background = "always"
+"#;
+    let parsed = toml::from_str::<ConfigToml>(cfg).expect("TOML deserialization should succeed");
+    assert_eq!(
+        parsed.tui.as_ref().map(|t| t.user_message_background),
+        Some(UserMessageBackgroundMode::Always),
+    );
+}
+
+#[test]
 fn tui_session_picker_view_deserializes_from_toml() {
     let cfg = r#"
 [tui]
@@ -4272,6 +4296,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
             vim_mode_default: false,
             raw_output_mode: false,
             alternate_screen: AltScreenMode::Auto,
+            user_message_background: UserMessageBackgroundMode::Auto,
             status_line: None,
             status_line_command: None,
             status_line_use_colors: true,

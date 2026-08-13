@@ -7,11 +7,12 @@ use crate::terminal_palette::default_fg;
 use crate::terminal_palette::effective_stdout_color_level;
 use crate::terminal_palette::rgb_color;
 use crate::terminal_palette::stdout_color_level;
+use codex_config::types::UserMessageBackgroundMode;
 use ratatui::style::Color;
 use ratatui::style::Style;
+use std::sync::OnceLock;
 
 const LIGHT_BG_ACCENT_RGB: (u8, u8, u8) = (0, 95, 135);
-
 #[derive(Clone, Copy)]
 pub(crate) enum StatusTone {
     Success,
@@ -40,11 +41,31 @@ fn status_style_for(
     };
     Style::default().fg(color).bold()
 }
+
+// A shade close to the normal dark terminal background. This remains visible without
+// making the composer read as a strongly separated panel.
+const USER_MESSAGE_FALLBACK_BACKGROUND: Color = Color::Rgb(53, 53, 53);
 // Decorative table rules should remain visible without competing with cell content.
 const TABLE_SEPARATOR_FG_ALPHA: f32 = 0.20;
 
+static USER_MESSAGE_BACKGROUND_MODE: OnceLock<UserMessageBackgroundMode> = OnceLock::new();
+
+/// Configures the user-message surface style for the active TUI process.
+pub(crate) fn set_user_message_background_mode(mode: UserMessageBackgroundMode) {
+    if USER_MESSAGE_BACKGROUND_MODE.set(mode).is_err() {
+        tracing::debug!(?mode, "user message background mode already configured");
+    }
+}
+
 pub fn user_message_style() -> Style {
-    user_message_style_for(default_bg())
+    let mode = *USER_MESSAGE_BACKGROUND_MODE
+        .get()
+        .unwrap_or(&UserMessageBackgroundMode::Auto);
+    if mode == UserMessageBackgroundMode::Auto {
+        user_message_style_for(default_bg())
+    } else {
+        user_message_style_for_mode(mode, default_bg())
+    }
 }
 
 pub fn proposed_plan_style() -> Style {
@@ -63,9 +84,21 @@ pub(crate) fn accent_style() -> Style {
 
 /// Returns the style for a user-authored message using the provided terminal background.
 pub fn user_message_style_for(terminal_bg: Option<(u8, u8, u8)>) -> Style {
-    match terminal_bg {
-        Some(bg) => Style::default().bg(user_message_bg(bg)),
-        None => Style::default(),
+    user_message_style_for_mode(UserMessageBackgroundMode::Auto, terminal_bg)
+}
+
+fn user_message_style_for_mode(
+    mode: UserMessageBackgroundMode,
+    terminal_bg: Option<(u8, u8, u8)>,
+) -> Style {
+    match (mode, terminal_bg) {
+        (UserMessageBackgroundMode::Never, _) => Style::default(),
+        (UserMessageBackgroundMode::Always, Some(bg)) => Style::default().bg(user_message_bg(bg)),
+        (UserMessageBackgroundMode::Always, None) => {
+            Style::default().bg(USER_MESSAGE_FALLBACK_BACKGROUND)
+        }
+        (UserMessageBackgroundMode::Auto, Some(bg)) => Style::default().bg(user_message_bg(bg)),
+        (UserMessageBackgroundMode::Auto, None) => Style::default(),
     }
 }
 
@@ -188,6 +221,30 @@ mod tests {
 
         assert_eq!(accent_style_for(Some((0, 0, 0))), expected);
         assert_eq!(accent_style_for(/*terminal_bg*/ None), expected);
+    }
+
+    #[test]
+    fn always_user_message_background_uses_neutral_fallback_without_terminal_colors() {
+        assert_eq!(
+            user_message_style_for_mode(UserMessageBackgroundMode::Always, None).bg,
+            Some(Color::Rgb(53, 53, 53)),
+        );
+    }
+
+    #[test]
+    fn always_user_message_background_matches_auto_with_terminal_colors() {
+        assert_eq!(
+            user_message_style_for_mode(UserMessageBackgroundMode::Always, Some((0, 0, 0))).bg,
+            Some(user_message_bg((0, 0, 0))),
+        );
+    }
+
+    #[test]
+    fn never_user_message_background_disables_surface() {
+        assert_eq!(
+            user_message_style_for_mode(UserMessageBackgroundMode::Never, Some((0, 0, 0))).bg,
+            None,
+        );
     }
 
     #[test]

@@ -4,6 +4,7 @@
 //! the focused app submodules.
 
 use crate::AppServerTarget;
+use crate::app::session_lifecycle::ThreadAttachPresentation;
 use crate::app_backtrack::BacktrackState;
 use crate::app_command::AppCommand;
 use crate::app_event::AppEvent;
@@ -903,6 +904,7 @@ impl App {
             &session_selection,
             SessionSelection::StartFresh | SessionSelection::Exit
         );
+        let initial_thread_is_fork = matches!(&session_selection, SessionSelection::Fork(_));
         let (mut chat_widget, initial_started_thread) = match session_selection {
             SessionSelection::StartFresh | SessionSelection::Exit => {
                 spawn_startup_thread_start(&app_server, config.clone(), app_event_tx.clone());
@@ -1102,8 +1104,16 @@ See the Codex keymap documentation for supported actions and examples."
             if started.blocks_direct_input {
                 app.mark_primary_thread_parent_owned(thread_id);
             }
-            app.enqueue_primary_thread_session(started.session, started.turns)
-                .await?;
+            app.enqueue_primary_thread_session_with_presentation(
+                started.session,
+                started.turns,
+                if initial_thread_is_fork {
+                    ThreadAttachPresentation::Fork
+                } else {
+                    ThreadAttachPresentation::SessionLineage
+                },
+            )
+            .await?;
             if should_prompt_for_paused_goal_after_startup_resume {
                 app.maybe_prompt_resume_paused_goal_after_resume(&mut app_server, thread_id)
                     .await;

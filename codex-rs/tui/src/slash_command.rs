@@ -161,6 +161,7 @@ impl SlashCommand {
                 | SlashCommand::Rename
                 | SlashCommand::New
                 | SlashCommand::Clear
+                | SlashCommand::Changes
                 | SlashCommand::Fork
                 | SlashCommand::Plan
                 | SlashCommand::Goal

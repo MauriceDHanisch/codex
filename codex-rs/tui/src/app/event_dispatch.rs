@@ -257,7 +257,7 @@ impl App {
                                 .replace_chat_widget_with_app_server_thread(
                                     tui,
                                     forked,
-                                    ThreadAttachPresentation::SessionLineage,
+                                    ThreadAttachPresentation::Fork,
                                     /*initial_user_message*/ None,
                                 )
                                 .await
@@ -416,7 +416,7 @@ impl App {
                             .replace_chat_widget_with_app_server_thread(
                                 tui,
                                 forked,
-                                ThreadAttachPresentation::PromptEdit,
+                                ThreadAttachPresentation::PromptEditFork,
                                 /*initial_user_message*/ None,
                             )
                             .await
@@ -653,6 +653,13 @@ impl App {
             }
             AppEvent::OpenChanges => {
                 self.open_changes_overlay(tui);
+            }
+            AppEvent::ClearSessionChanges => {
+                self.chat_widget.clear_session_file_changes();
+                self.chat_widget.add_info_message(
+                    "Changes baseline cleared. New edits will be tracked.".to_string(),
+                    /*hint*/ None,
+                );
             }
             AppEvent::OpenAppLink {
                 app_id,

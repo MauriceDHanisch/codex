@@ -234,6 +234,7 @@ use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Block;
+use ratatui::widgets::Clear;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::StatefulWidgetRef;
 use ratatui::widgets::Widget;
@@ -268,10 +269,12 @@ use super::footer::footer_line_width;
 use super::footer::inset_footer_hint_area;
 use super::footer::max_left_width_for_right;
 use super::footer::passive_footer_status_line;
+use super::footer::passive_footer_status_lines;
 use super::footer::render_context_right;
 use super::footer::render_footer_from_props;
 use super::footer::render_footer_hint_items;
 use super::footer::render_footer_line;
+use super::footer::render_footer_lines;
 use super::footer::reset_mode_after_activity;
 use super::footer::side_conversation_context_line;
 use super::footer::single_line_footer_layout;
@@ -4453,7 +4456,7 @@ impl ChatComposer {
         }
     }
 
-    pub(crate) fn set_status_line(&mut self, status_line: Option<Line<'static>>) -> bool {
+    pub(crate) fn set_status_line(&mut self, status_line: Option<Vec<Line<'static>>>) -> bool {
         if self.footer.status_line_value == status_line {
             return false;
         }
@@ -4947,6 +4950,21 @@ impl ChatComposer {
                         && let Some(frame_requester) = &self.frame_requester
                     {
                         frame_requester.schedule_frame_in(EFFORT_STATUS_LINE_FRAME_TICK);
+                    }
+                    if status_line_active
+                        && let Some(lines) = passive_footer_status_lines(&footer_props)
+                        && lines.len() > 1
+                    {
+                        let available_width =
+                            hint_rect.width.saturating_sub(FOOTER_INDENT_COLS as u16) as usize;
+                        let lines = lines
+                            .into_iter()
+                            .map(|line| {
+                                truncate_line_with_ellipsis_if_overflow(line, available_width)
+                            })
+                            .collect();
+                        Clear.render(hint_rect, buf);
+                        render_footer_lines(hint_rect, buf, lines);
                     }
                 }
             }
@@ -5542,9 +5560,9 @@ mod tests {
             /*enhanced_keys_supported*/ true,
             |composer| {
                 composer.set_status_line_enabled(/*enabled*/ true);
-                composer.set_status_line(Some(Line::from(
+                composer.set_status_line(Some(vec![Line::from(
                     "gpt-5.4 high fast · ~/code/codex-1 · Context 0% used",
-                )));
+                )]));
                 composer.set_text_content("!git status".to_string(), Vec::new(), Vec::new());
             },
         );
@@ -5554,9 +5572,9 @@ mod tests {
             /*enhanced_keys_supported*/ true,
             |composer| {
                 composer.set_status_line_enabled(/*enabled*/ true);
-                composer.set_status_line(Some(Line::from(
+                composer.set_status_line(Some(vec![Line::from(
                     "gpt-5.4 high fast · ~/code/codex-1 · Context 0% used",
-                )));
+                )]));
                 composer.set_text_content("!".to_string(), Vec::new(), Vec::new());
                 let _ = composer.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
             },
@@ -5597,9 +5615,9 @@ mod tests {
             /*disable_paste_burst*/ false,
         );
         composer.set_status_line_enabled(/*enabled*/ true);
-        composer.set_status_line(Some(Line::from(
+        composer.set_status_line(Some(vec![Line::from(
             "gpt-5.4 high fast · ~/code/codex-1 · Context 0% used",
-        )));
+        )]));
         composer.set_text_content("!git status".to_string(), Vec::new(), Vec::new());
 
         let area = Rect::new(0, 0, 100, 9);
@@ -5772,10 +5790,10 @@ mod tests {
         );
         let url = "https://github.com/openai/codex/pull/20252";
         composer.set_status_line_enabled(/*enabled*/ true);
-        composer.set_status_line(Some(Line::from(Span::styled(
+        composer.set_status_line(Some(vec![Line::from(Span::styled(
             "PR #20252",
             Style::default().cyan().underlined(),
-        ))));
+        ))]));
         composer.set_status_line_hyperlink(Some(url.to_string()));
 
         let area = Rect::new(0, 0, 40, 6);

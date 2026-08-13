@@ -103,7 +103,11 @@ pub(super) struct CachedProjectRootName {
 
 impl ChatWidget {
     fn status_surface_selections(&self) -> StatusSurfaceSelections {
-        let (status_line_items, invalid_status_line_items) = self.status_line_items_with_invalids();
+        let (status_line_items, invalid_status_line_items) = if self.custom_status_line_enabled() {
+            (Vec::new(), Vec::new())
+        } else {
+            self.status_line_items_with_invalids()
+        };
         let (terminal_title_items, invalid_terminal_title_items) =
             self.terminal_title_items_with_invalids();
         StatusSurfaceSelections {
@@ -198,6 +202,13 @@ impl ChatWidget {
     }
 
     fn refresh_status_line_from_selections(&mut self, selections: &StatusSurfaceSelections) {
+        if self.custom_status_line_enabled() {
+            self.bottom_pane.set_status_line_enabled(/*enabled*/ true);
+            self.set_status_line_hyperlink(/*url*/ None);
+            self.refresh_custom_status_line_if_due();
+            self.set_status_line(self.custom_status_line_value());
+            return;
+        }
         let enabled = !selections.status_line_items.is_empty();
         self.bottom_pane.set_status_line_enabled(enabled);
         if !enabled {
@@ -448,7 +459,7 @@ impl ChatWidget {
         })
     }
 
-    fn status_line_cwd(&self) -> &Path {
+    pub(super) fn status_line_cwd(&self) -> &Path {
         self.current_cwd
             .as_deref()
             .unwrap_or(self.config.cwd.as_path())
@@ -615,7 +626,8 @@ impl ChatWidget {
 
     pub(super) fn refresh_status_line_if_workspace_headline_due(&mut self) {
         let now = Instant::now();
-        if self.status_line_workspace_headline_should_fetch(now)
+        if !self.custom_status_line_enabled()
+            && self.status_line_workspace_headline_should_fetch(now)
             && self
                 .status_line_items_with_invalids()
                 .0
@@ -1042,7 +1054,7 @@ impl ChatWidget {
     }
 }
 
-fn five_hour_status_window(
+pub(super) fn five_hour_status_window(
     snapshot: &RateLimitSnapshotDisplay,
 ) -> Option<(&RateLimitWindowDisplay, bool)> {
     find_primary_codex_window(snapshot, "5h")
@@ -1051,7 +1063,7 @@ fn five_hour_status_window(
         .or_else(|| non_weekly_secondary_window_when_primary_is_weekly(snapshot))
 }
 
-fn weekly_status_window(
+pub(super) fn weekly_status_window(
     snapshot: &RateLimitSnapshotDisplay,
 ) -> Option<(&RateLimitWindowDisplay, bool)> {
     find_codex_window(snapshot, "weekly")
@@ -1138,7 +1150,7 @@ fn matches_window_label(window: &RateLimitWindowDisplay, label: &str) -> bool {
         == Some(label)
 }
 
-fn permissions_display(config: &Config) -> String {
+pub(super) fn permissions_display(config: &Config) -> String {
     let active_permission_profile = config.permissions.active_permission_profile();
     if let Some(active_permission_profile) = active_permission_profile.as_ref()
         && !active_permission_profile.id.starts_with(':')
@@ -1167,7 +1179,7 @@ fn permissions_display(config: &Config) -> String {
     "Custom permissions".to_string()
 }
 
-fn approval_mode_display(config: &Config) -> String {
+pub(super) fn approval_mode_display(config: &Config) -> String {
     let approval_policy = AskForApproval::from(config.permissions.approval_policy.value());
     if approval_policy == AskForApproval::OnRequest {
         return match config.approvals_reviewer {

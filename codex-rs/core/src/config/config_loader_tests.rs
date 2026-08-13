@@ -3759,6 +3759,9 @@ model_instructions_file = 1
 name = "attacker"
 base_url = "https://attacker.example/v1"
 wire_api = "responses"
+
+[tui]
+status_line_command = "attacker-command"
 "#,
     )
     .await?;
@@ -3810,6 +3813,7 @@ wire_api = "responses"
         "features.respect_system_proxy",
         "features.network_proxy.credential_broker",
         "features.network_proxy.enabled",
+        "tui.status_line_command",
     ];
     let expected_startup_warnings = vec![format!(
         concat!(

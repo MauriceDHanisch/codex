@@ -1,0 +1,174 @@
+name: maurice-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.147.0-maurice.1
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: maurice-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.release.outputs.commit }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - id: release
+        env:
+          TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${GITHUB_REF}" == "refs/heads/maurice" ]] || {
+            echo "Run releases from the maurice branch." >&2
+            exit 1
+          }
+          [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-maurice\.[0-9]+$ ]] || {
+            echo "Invalid release tag: ${TAG}" >&2
+            exit 1
+          }
+          git fetch --tags origin
+          if git rev-parse --verify --quiet "refs/tags/${TAG}"; then
+            echo "Tag ${TAG} already exists." >&2
+            exit 1
+          fi
+          git tag --annotate "${TAG}" --message "${TAG}"
+          git push origin "${TAG}"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: codex-rs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            binaries: codex codex-code-mode-host codex-responses-api-proxy
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            binaries: codex codex-code-mode-host codex-responses-api-proxy bwrap
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Install Linux build dependencies
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Configure musl toolchain
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
+          mkdir -p "${cargo_home}/bin"
+          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
+          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
+          : > "${cargo_home}/config.toml"
+      - name: Install Zig
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
+          use-cache: false
+      - name: Install musl build tools
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
+      - name: Configure rusty-v8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+      - name: Build Linux sandbox helper
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          export AWS_LC_SYS_NO_JITTER_ENTROPY=1
+          cargo build --target "${target}" --release --bin bwrap
+          helper="target/${target}/release/bwrap"
+          strip --strip-debug --strip-unneeded "${helper}"
+          echo "CODEX_BWRAP_SHA256=$(sha256sum "${helper}" | awk '{print $1}')" >> "$GITHUB_ENV"
+          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${target//-/_}"
+          echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
+      - name: Build release binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          for binary in ${{ matrix.binaries }}; do
+            [[ "${binary}" == "bwrap" ]] || args+=(--bin "${binary}")
+          done
+          cargo build --target "${{ matrix.target }}" --release "${args[@]}"
+      - name: Package release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          package="codex-${target}"
+          mkdir -p "dist/${package}/bin"
+          for binary in ${{ matrix.binaries }}; do
+            cp "target/${target}/release/${binary}" "dist/${package}/bin/${binary}"
+          done
+          tar -C dist -czf "${package}.tar.gz" "${package}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-${{ matrix.target }}
+          path: codex-rs/codex-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create checksums
+        working-directory: dist
+        shell: bash
+        run: sha256sum codex-*.tar.gz > SHA256SUMS
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          TARGET: ${{ needs.prepare.outputs.commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${TAG}" \
+            --target "${TARGET}" \
+            --title "Codex ${TAG}" \
+            --generate-notes \
+            dist/codex-*.tar.gz dist/SHA256SUMS

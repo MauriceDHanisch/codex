@@ -194,6 +194,9 @@ impl App {
         let active_agents = self
             .agent_navigation
             .active_subagent_count(self.primary_thread_id);
+        let stopped_agents = self
+            .agent_navigation
+            .stopped_subagent_count(self.primary_thread_id);
         let agent_label = self
             .current_displayed_thread_id()
             .filter(|thread_id| self.agent_navigation.is_parent_owned(*thread_id))
@@ -202,8 +205,11 @@ impl App {
                     .agent_label(thread_id, self.primary_thread_id)
             });
         self.chat_widget.set_active_agent_label(None);
-        self.chat_widget
-            .set_custom_status_line_agent_context(active_agents, agent_label);
+        self.chat_widget.set_custom_status_line_agent_context(
+            active_agents,
+            stopped_agents,
+            agent_label,
+        );
         self.sync_side_thread_ui();
     }
 

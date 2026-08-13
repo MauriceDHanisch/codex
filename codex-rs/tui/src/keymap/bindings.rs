@@ -227,6 +227,7 @@ define_runtime_action_bindings! {
     "global" => Global, app, global [
         open_agents,
         open_transcript,
+        open_changes,
         open_external_editor,
         copy,
         clear_terminal,

@@ -948,6 +948,7 @@ mod tests {
                 "Editor.move_word_left",
                 "Editor.move_word_right",
                 "Global.open_transcript",
+                "Global.open_changes",
                 "Pager.close",
                 "Pager.page_up",
                 "Pager.page_down",

@@ -54,6 +54,7 @@ use crate::bottom_pane::StatusSurfacePreviewItem;
 use crate::bottom_pane::TerminalTitleItem;
 use crate::bottom_pane::TerminalTitleSetupView;
 use crate::diff_model::FileChange;
+use crate::diff_model::SessionFileChange;
 use crate::git_action_directives::parse_assistant_markdown;
 use crate::legacy_core::config::Config;
 use crate::legacy_core::config::PermissionProfileSnapshot;
@@ -609,6 +610,7 @@ pub(crate) struct ChatWidget {
     collab_agent_metadata: HashMap<ThreadId, AgentMetadata>,
     pending_collab_spawn_requests: HashMap<String, multi_agents::SpawnRequestSummary>,
     suppressed_exec_calls: HashSet<String>,
+    session_file_changes: HashMap<PathBuf, Arc<SessionFileChange>>,
     skills_all: Vec<SkillMetadata>,
     skills_initial_state: Option<HashMap<AbsolutePathBuf, bool>>,
     last_unified_wait: Option<UnifiedExecWaitState>,

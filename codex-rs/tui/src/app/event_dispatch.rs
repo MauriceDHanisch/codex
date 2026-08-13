@@ -824,6 +824,9 @@ impl App {
                 ));
                 tui.frame_requester().schedule_frame();
             }
+            AppEvent::OpenChanges => {
+                self.open_changes_overlay(tui);
+            }
             AppEvent::OpenAppLink {
                 app_id,
                 title,
@@ -3161,6 +3164,17 @@ impl App {
                 AppRunControl::Exit(ExitReason::UserRequested)
             }
         }
+    }
+
+    pub(super) fn open_changes_overlay(&mut self, tui: &mut tui::Tui) {
+        let _ = tui.enter_alt_screen();
+        let (changes, cwd) = self.chat_widget.session_file_changes();
+        self.overlay = Some(Overlay::new_changes(
+            changes,
+            cwd,
+            self.keymap.pager.clone(),
+        ));
+        tui.frame_requester().schedule_frame();
     }
 
     pub(super) async fn archive_current_thread(

@@ -73,6 +73,7 @@ struct CustomStatusLineWorkspace {
 struct CustomStatusLineContextWindow {
     used_percentage: i64,
     context_window_size: i64,
+    used_tokens: i64,
     total_input_tokens: i64,
     total_output_tokens: i64,
 }
@@ -123,11 +124,13 @@ impl ChatWidget {
     fn custom_status_line_input(&self) -> CustomStatusLineInput {
         let cwd = self.status_line_cwd().display().to_string();
         let usage = self.status_line_total_usage();
-        let last_turn = self
+        let context_usage = self
             .token_info
             .as_ref()
             .map(|usage| usage.last_token_usage.clone())
             .unwrap_or_default();
+        let last_turn = context_usage.clone();
+        let context_window_size = self.status_line_context_window_size().unwrap_or(0);
         let reasoning_effort = self
             .effective_reasoning_effort()
             .or_else(|| self.config.model_reasoning_effort.clone());
@@ -151,7 +154,8 @@ impl ChatWidget {
             workspace: CustomStatusLineWorkspace { current_dir: cwd },
             context_window: CustomStatusLineContextWindow {
                 used_percentage: self.status_line_context_used_percent().unwrap_or(0),
-                context_window_size: self.status_line_context_window_size().unwrap_or(0),
+                context_window_size: TokenUsage::effective_context_window_size(context_window_size),
+                used_tokens: context_usage.tokens_used_in_context_window(),
                 total_input_tokens: usage.input_tokens,
                 total_output_tokens: usage.output_tokens,
             },

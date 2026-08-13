@@ -21,13 +21,13 @@ fn preserves_unicode_in_ansi_styled_output() {
 }
 
 #[test]
-fn limits_output_to_four_lines() {
+fn limits_output_to_five_lines() {
     let lines =
         parse_custom_status_line_output("one\ntwo\nthree\nfour\nfive").expect("status line output");
 
     assert_eq!(
         lines.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        vec!["one", "two", "three", "four"]
+        vec!["one", "two", "three", "four", "five"]
     );
 }
 
@@ -45,6 +45,14 @@ fn command_is_bounded_and_receives_json_through_environment() {
         PathBuf::from("/workspace"),
     );
 
+    assert_eq!(
+        command.argv,
+        vec![
+            "sh",
+            "-c",
+            "printf '%s' \"$CODEX_STATUS_INPUT\" | sh -c \"$CODEX_STATUS_COMMAND\"",
+        ]
+    );
     assert_eq!(command.timeout, CUSTOM_STATUS_LINE_TIMEOUT);
     assert_eq!(
         command.output_bytes_cap,

@@ -50,6 +50,7 @@ use crate::ui_consts::FOOTER_INDENT_COLS;
 use crossterm::event::KeyCode;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
@@ -104,6 +105,7 @@ pub(crate) enum GoalStatusIndicator {
 
 const MODE_CYCLE_HINT: &str = "shift+tab to cycle";
 const FOOTER_CONTEXT_GAP_COLS: u16 = 1;
+const AGENT_LABEL_COLOR: Color = Color::Rgb(225, 180, 245);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct FooterKeyHints {
@@ -813,10 +815,15 @@ pub(crate) fn passive_footer_status_lines(props: &FooterProps) -> Option<Vec<Lin
 
     if let Some(active_agent_label) = props.active_agent_label.as_ref() {
         if let Some(existing) = lines.as_mut().and_then(|lines| lines.last_mut()) {
-            existing.spans.push(" · ".dim());
-            existing.spans.push(active_agent_label.clone().dim());
+            existing.spans.push(" │ ".dim());
+            existing.spans.push("agent: ".fg(AGENT_LABEL_COLOR));
+            existing
+                .spans
+                .push(active_agent_label.clone().fg(AGENT_LABEL_COLOR));
         } else {
-            lines = Some(vec![Line::from(active_agent_label.clone()).dim()]);
+            lines = Some(vec![
+                Line::from(format!("agent: {active_agent_label}")).fg(AGENT_LABEL_COLOR),
+            ]);
         }
     }
 

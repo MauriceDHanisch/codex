@@ -676,6 +676,7 @@ pub(crate) struct ChatWidget {
     thread_rename_block_message: Option<String>,
     active_side_conversation: bool,
     custom_status_line_active_agents: usize,
+    custom_status_line_stopped_agents: usize,
     custom_status_line_agent_label: Option<String>,
     blocks_direct_input: bool,
     misalignment_policy_violation: bool,

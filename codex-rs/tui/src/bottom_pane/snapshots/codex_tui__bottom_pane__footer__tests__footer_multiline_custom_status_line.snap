@@ -1,0 +1,6 @@
+---
+source: tui/src/bottom_pane/footer.rs
+expression: terminal.backend()
+---
+"  model · ~/code/codex                                                          "
+"  context 42% · weekly 87%                                                      "

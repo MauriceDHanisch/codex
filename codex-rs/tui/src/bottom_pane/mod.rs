@@ -1866,7 +1866,7 @@ impl BottomPane {
         }
     }
 
-    pub(crate) fn set_status_line(&mut self, status_line: Option<Line<'static>>) {
+    pub(crate) fn set_status_line(&mut self, status_line: Option<Vec<Line<'static>>>) {
         if self.composer.set_status_line(status_line) {
             self.request_redraw();
         }

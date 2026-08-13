@@ -4026,6 +4026,11 @@
           },
           "type": "array"
         },
+        "status_line_command": {
+          "default": null,
+          "description": "Shell command that renders the TUI status line from JSON input.\n\nWhen set, this takes precedence over `status_line`. Codex invokes the command from the active workspace, writes status data to stdin, and renders ANSI-styled stdout.",
+          "type": "string"
+        },
         "status_line_use_colors": {
           "default": true,
           "description": "Color status line items with colors derived from the active syntax theme. Defaults to `true`.",

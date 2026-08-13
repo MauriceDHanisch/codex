@@ -1290,6 +1290,11 @@ fn sanitize_project_config(
             }
         }
     }
+    if let Some(tui) = table.get_mut("tui").and_then(TomlValue::as_table_mut)
+        && tui.remove("status_line_command").is_some()
+    {
+        ignored_keys.push("tui.status_line_command".to_string());
+    }
 
     ignored_keys
 }

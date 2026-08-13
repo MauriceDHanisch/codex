@@ -76,7 +76,7 @@ pub(crate) struct FooterProps {
     ///
     /// This is rendered when `mode` is `FooterMode::QuitShortcutReminder`.
     pub(crate) quit_shortcut_key: KeyBinding,
-    pub(crate) status_line_value: Option<Line<'static>>,
+    pub(crate) status_line_value: Option<Vec<Line<'static>>>,
     pub(crate) status_line_enabled: bool,
     pub(crate) key_hints: FooterKeyHints,
     /// Active thread label shown when the footer is rendering contextual information instead of an
@@ -247,8 +247,13 @@ pub(crate) fn footer_height(props: &FooterProps) -> u16 {
 
 /// Render a single precomputed footer line.
 pub(crate) fn render_footer_line(area: Rect, buf: &mut Buffer, line: Line<'static>) {
+    render_footer_lines(area, buf, vec![line]);
+}
+
+/// Render precomputed footer lines.
+pub(crate) fn render_footer_lines(area: Rect, buf: &mut Buffer, lines: Vec<Line<'static>>) {
     Paragraph::new(prefix_lines(
-        vec![line],
+        lines,
         " ".repeat(FOOTER_INDENT_COLS).into(),
         " ".repeat(FOOTER_INDENT_COLS).into(),
     ))
@@ -707,8 +712,8 @@ fn footer_from_props_lines(
     let key_hints = props.key_hints;
     // Passive footer context can come from the configurable status line, the
     // active agent label, or both combined.
-    if let Some(status_line) = passive_footer_status_line(props) {
-        return vec![status_line];
+    if let Some(status_lines) = passive_footer_status_lines(props) {
+        return status_lines;
     }
     match props.mode {
         FooterMode::QuitShortcutReminder => {
@@ -769,26 +774,31 @@ fn footer_from_props_lines(
 /// both combined. Active instructional states such as quit reminders, shortcut overlays, and queue
 /// prompts deliberately return `None` so those call-to-action hints stay visible.
 pub(crate) fn passive_footer_status_line(props: &FooterProps) -> Option<Line<'static>> {
+    passive_footer_status_lines(props)?.into_iter().next()
+}
+
+/// Returns all contextual status lines for the passive footer layout.
+pub(crate) fn passive_footer_status_lines(props: &FooterProps) -> Option<Vec<Line<'static>>> {
     if !shows_passive_footer_line(props) {
         return None;
     }
 
-    let mut line = if props.status_line_enabled {
+    let mut lines = if props.status_line_enabled {
         props.status_line_value.clone()
     } else {
         None
     };
 
     if let Some(active_agent_label) = props.active_agent_label.as_ref() {
-        if let Some(existing) = line.as_mut() {
+        if let Some(existing) = lines.as_mut().and_then(|lines| lines.last_mut()) {
             existing.spans.push(" · ".dim());
             existing.spans.push(active_agent_label.clone().dim());
         } else {
-            line = Some(Line::from(active_agent_label.clone()).dim());
+            lines = Some(vec![Line::from(active_agent_label.clone()).dim()]);
         }
     }
 
-    line
+    lines.filter(|lines| !lines.is_empty())
 }
 
 /// Whether the current footer mode allows contextual information to replace instructional hints.
@@ -1408,11 +1418,22 @@ mod tests {
                     FooterMode::ComposerEmpty | FooterMode::ComposerHasDraft
                 ) {
                     if status_line_active {
-                        if let Some(line) = truncated_status_line.clone() {
-                            render_footer_line(area, f.buffer_mut(), line);
-                        }
-                        if can_show_left_and_context && let Some(line) = &right_line {
-                            render_context_right(area, f.buffer_mut(), line);
+                        let status_lines = passive_footer_status_lines(props).unwrap_or_default();
+                        if status_lines.len() > 1 {
+                            let lines = status_lines
+                                .into_iter()
+                                .map(|line| {
+                                    truncate_line_with_ellipsis_if_overflow(line, available_width)
+                                })
+                                .collect();
+                            render_footer_lines(area, f.buffer_mut(), lines);
+                        } else {
+                            if let Some(line) = truncated_status_line.clone() {
+                                render_footer_line(area, f.buffer_mut(), line);
+                            }
+                            if can_show_left_and_context && let Some(line) = &right_line {
+                                render_context_right(area, f.buffer_mut(), line);
+                            }
                         }
                     } else {
                         let (summary_left, show_context) = single_line_footer_layout(
@@ -1812,7 +1833,7 @@ mod tests {
             collaboration_modes_enabled: false,
             is_wsl: false,
             quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
-            status_line_value: Some(Line::from("Status line content".to_string())),
+            status_line_value: Some(vec![Line::from("Status line content".to_string())]),
             status_line_enabled: true,
             key_hints: FooterKeyHints::default_bindings(),
             active_agent_label: None,
@@ -1829,7 +1850,7 @@ mod tests {
             collaboration_modes_enabled: false,
             is_wsl: false,
             quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
-            status_line_value: Some(Line::from("Status line content".to_string())),
+            status_line_value: Some(vec![Line::from("Status line content".to_string())]),
             status_line_enabled: true,
             key_hints: FooterKeyHints::default_bindings(),
             active_agent_label: None,
@@ -1846,7 +1867,7 @@ mod tests {
             collaboration_modes_enabled: false,
             is_wsl: false,
             quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
-            status_line_value: Some(Line::from("Status line content".to_string())),
+            status_line_value: Some(vec![Line::from("Status line content".to_string())]),
             status_line_enabled: true,
             key_hints: FooterKeyHints::default_bindings(),
             active_agent_label: None,
@@ -1941,9 +1962,9 @@ mod tests {
             collaboration_modes_enabled: true,
             is_wsl: false,
             quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
-            status_line_value: Some(Line::from(
+            status_line_value: Some(vec![Line::from(
                 "Status line content that should truncate before the mode indicator".to_string(),
-            )),
+            )]),
             status_line_enabled: true,
             key_hints: FooterKeyHints::default_bindings(),
             active_agent_label: None,
@@ -1983,13 +2004,33 @@ mod tests {
             collaboration_modes_enabled: false,
             is_wsl: false,
             quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
-            status_line_value: Some(Line::from("Status line content".to_string())),
+            status_line_value: Some(vec![Line::from("Status line content".to_string())]),
             status_line_enabled: true,
             key_hints: FooterKeyHints::default_bindings(),
             active_agent_label: Some("Robie [explorer]".to_string()),
         };
 
         snapshot_footer("footer_status_line_with_active_agent_label", props);
+
+        let props = FooterProps {
+            mode: FooterMode::ComposerEmpty,
+            esc_backtrack_hint: false,
+            use_shift_enter_hint: false,
+            is_task_running: false,
+            queue_submissions: false,
+            collaboration_modes_enabled: false,
+            is_wsl: false,
+            quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
+            status_line_value: Some(vec![
+                Line::from("model · ~/code/codex"),
+                Line::from("context 42% · weekly 87%"),
+            ]),
+            status_line_enabled: true,
+            key_hints: FooterKeyHints::default_bindings(),
+            active_agent_label: None,
+        };
+
+        snapshot_footer("footer_multiline_custom_status_line", props);
     }
 
     #[test]
@@ -2003,10 +2044,10 @@ mod tests {
             collaboration_modes_enabled: true,
             is_wsl: false,
             quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
-            status_line_value: Some(Line::from(
+            status_line_value: Some(vec![Line::from(
                 "Status line content that is definitely too long to fit alongside the mode label"
                     .to_string(),
-            )),
+            )]),
             status_line_enabled: true,
             key_hints: FooterKeyHints::default_bindings(),
             active_agent_label: None,

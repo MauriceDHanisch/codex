@@ -2785,6 +2785,14 @@ impl App {
                 self.chat_widget.set_status_line_branch(cwd, branch);
                 self.refresh_status_line();
             }
+            AppEvent::CustomStatusLineUpdated { request_id, result } => {
+                if self
+                    .chat_widget
+                    .set_custom_status_line_output(request_id, result)
+                {
+                    tui.frame_requester().schedule_frame();
+                }
+            }
             AppEvent::StatusLineGitSummaryUpdated { cwd, summary } => {
                 self.chat_widget.set_status_line_git_summary(cwd, summary);
                 self.refresh_status_line();

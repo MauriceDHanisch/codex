@@ -45,6 +45,14 @@ fn command_is_bounded_and_receives_json_through_environment() {
         PathBuf::from("/workspace"),
     );
 
+    assert_eq!(
+        command.argv,
+        vec![
+            "sh",
+            "-c",
+            "printf '%s' \"$CODEX_STATUS_INPUT\" | sh -c \"$CODEX_STATUS_COMMAND\"",
+        ]
+    );
     assert_eq!(command.timeout, CUSTOM_STATUS_LINE_TIMEOUT);
     assert_eq!(
         command.output_bytes_cap,

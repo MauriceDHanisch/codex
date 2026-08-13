@@ -4978,7 +4978,7 @@ impl ChatComposer {
                     .to_string()
             };
             if !textarea_rect.is_empty() {
-                let placeholder = Span::from(text).dim();
+                let placeholder = Span::from(text).style(style.add_modifier(Modifier::DIM));
                 Line::from(vec![placeholder]).render(textarea_rect.inner(Margin::new(0, 0)), buf);
             }
         }

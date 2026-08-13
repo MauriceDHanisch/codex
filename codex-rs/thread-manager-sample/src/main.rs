@@ -57,6 +57,7 @@ use codex_core_api::TuiPetAnchor;
 use codex_core_api::TurnInputRequest;
 use codex_core_api::UriBasedFileOpener;
 use codex_core_api::UserInput;
+use codex_core_api::UserMessageBackgroundMode;
 use codex_core_api::WebSearchMode;
 use codex_core_api::arg0_dispatch_or_else;
 use codex_core_api::build_models_manager;
@@ -226,6 +227,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         show_tooltips: true,
         model_availability_nux: ModelAvailabilityNuxConfig::default(),
         tui_alternate_screen: AltScreenMode::Auto,
+        tui_user_message_background: UserMessageBackgroundMode::Auto,
         tui_status_line: None,
         tui_status_line_command: None,
         tui_status_line_use_colors: true,

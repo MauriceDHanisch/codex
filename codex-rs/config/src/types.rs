@@ -689,6 +689,19 @@ pub struct ModelAvailabilityNuxConfig {
     pub shown_count: HashMap<String, u32>,
 }
 
+/// Controls the background behind user-authored messages and TUI surfaces.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum UserMessageBackgroundMode {
+    /// Derive the background from the terminal's reported default background.
+    #[default]
+    Auto,
+    /// Use a neutral fallback surface when terminal color detection is unavailable.
+    Always,
+    /// Do not apply a background to user-authored messages or TUI surfaces.
+    Never,
+}
+
 /// Fallback resize-reflow row cap when Codex cannot identify a terminal-specific scrollback size.
 pub const DEFAULT_TERMINAL_RESIZE_REFLOW_FALLBACK_MAX_ROWS: usize = 1_000;
 
@@ -726,6 +739,14 @@ pub struct Tui {
     /// - `never`: Never use alternate screen (inline mode only, preserves scrollback).
     #[serde(default)]
     pub alternate_screen: AltScreenMode,
+
+    /// Controls the background behind user-authored messages and TUI surfaces.
+    ///
+    /// `auto` derives a subtle surface from the terminal's reported background.
+    /// `always` falls back to a neutral surface when the terminal cannot report colors, such as
+    /// through some terminal multiplexers. `never` disables the surface.
+    #[serde(default)]
+    pub user_message_background: UserMessageBackgroundMode,
 
     /// Ordered list of status line item identifiers.
     ///

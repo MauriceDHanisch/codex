@@ -6,7 +6,7 @@ on:
       - "v*-maurice.*"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: maurice-release
@@ -22,6 +22,8 @@ jobs:
         working-directory: codex-rs
     env:
       CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ contains(matrix.target, 'apple-darwin') && 'packed' || 'off' }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       SCCACHE_CACHE_SIZE: 5G
     strategy:
       fail-fast: false
@@ -37,7 +39,7 @@ jobs:
             target: aarch64-unknown-linux-musl
             binaries: codex codex-code-mode-host codex-responses-api-proxy bwrap
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -86,7 +88,7 @@ jobs:
       - name: Install sccache
         uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
         with:
-          tool: sccache@0.7.5
+          tool: sccache@0.12.0
       - name: Configure sccache
         shell: bash
         run: |
@@ -109,7 +111,7 @@ jobs:
             sccache-release-${{ runner.os }}-${{ matrix.target }}-${{ steps.cache_key.outputs.lockfile }}-
       - name: Install Zig
         if: ${{ contains(matrix.target, 'linux-musl') }}
-        uses: mlugg/setup-zig@v2
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: 0.14.0
           use-cache: false
@@ -143,7 +145,21 @@ jobs:
           for binary in ${{ matrix.binaries }}; do
             [[ "${binary}" == "bwrap" ]] || args+=(--bin "${binary}")
           done
-          cargo build --target "${{ matrix.target }}" --release "${args[@]}"
+          cargo build --target "${{ matrix.target }}" --release --timings "${args[@]}"
+      - name: Archive symbols and strip release binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          binaries=()
+          for binary in ${{ matrix.binaries }}; do
+            [[ "${binary}" == "bwrap" ]] || binaries+=("${binary}")
+          done
+          bash "${GITHUB_WORKSPACE}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
+            --target "${{ matrix.target }}" \
+            --artifact-name "${{ matrix.target }}" \
+            --release-dir "target/${{ matrix.target }}/release" \
+            --archive-dir "symbols-dist/${{ matrix.target }}" \
+            --binaries "${binaries[*]}"
       - name: Package release asset
         shell: bash
         run: |
@@ -155,11 +171,18 @@ jobs:
             cp "target/${target}/release/${binary}" "dist/${package}/bin/${binary}"
           done
           tar -C dist -czf "${package}.tar.gz" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: codex-${{ matrix.target }}
           path: codex-rs/codex-${{ matrix.target }}.tar.gz
           if-no-files-found: error
+          retention-days: 1
+      - name: Show and stop sccache
+        if: always()
+        continue-on-error: true
+        run: |
+          sccache --show-stats
+          sccache --stop-server
       - name: Save Cargo dependency cache
         if: ${{ always() && !cancelled() && steps.cargo_cache.outputs.cache-hit != 'true' }}
         continue-on-error: true
@@ -180,16 +203,13 @@ jobs:
         with:
           path: ${{ github.workspace }}/.sccache/
           key: sccache-release-${{ runner.os }}-${{ matrix.target }}-${{ steps.cache_key.outputs.lockfile }}-${{ github.run_id }}
-      - name: Show sccache statistics
-        if: always()
-        continue-on-error: true
-        run: sccache --show-stats
-
   release:
     needs: build
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: dist
           merge-multiple: true
@@ -198,15 +218,15 @@ jobs:
         shell: bash
         run: sha256sum codex-*.tar.gz > SHA256SUMS
       - name: Publish GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-          TARGET: ${{ github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh release create "${TAG}" \
-            --target "${TARGET}" \
-            --title "Codex ${TAG}" \
-            --generate-notes \
-            dist/codex-*.tar.gz dist/SHA256SUMS
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Codex ${{ github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: |
+            dist/codex-*.tar.gz
+            dist/SHA256SUMS
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          make_latest: true

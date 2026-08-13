@@ -12,7 +12,7 @@ use serde::Serialize;
 const CUSTOM_STATUS_LINE_REFRESH_INTERVAL: Duration = Duration::from_secs(/*secs*/ 1);
 const CUSTOM_STATUS_LINE_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 2);
 const CUSTOM_STATUS_LINE_OUTPUT_BYTES_CAP: usize = 16 * 1024;
-const CUSTOM_STATUS_LINE_MAX_LINES: usize = 4;
+const CUSTOM_STATUS_LINE_MAX_LINES: usize = 5;
 
 #[derive(Default)]
 pub(super) struct CustomStatusLineState {

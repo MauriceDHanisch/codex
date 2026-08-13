@@ -765,6 +765,9 @@ pub struct Config {
     /// When unset, the TUI defaults to: `model-with-reasoning` and `current-dir`.
     pub tui_status_line: Option<Vec<String>>,
 
+    /// Shell command that renders the TUI status line from JSON input.
+    pub tui_status_line_command: Option<String>,
+
     /// Whether to color status line items with colors from the active syntax theme.
     pub tui_status_line_use_colors: bool,
 
@@ -4338,6 +4341,10 @@ impl Config {
                 .map(|t| t.alternate_screen)
                 .unwrap_or_default(),
             tui_status_line: cfg.tui.as_ref().and_then(|t| t.status_line.clone()),
+            tui_status_line_command: cfg
+                .tui
+                .as_ref()
+                .and_then(|t| t.status_line_command.clone()),
             tui_status_line_use_colors: cfg
                 .tui
                 .as_ref()

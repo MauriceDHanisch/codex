@@ -230,6 +230,7 @@ impl ChatWidget {
             current_rollout_path: None,
             current_cwd,
             workspace_command_runner,
+            custom_status_line_state: CustomStatusLineState::default(),
             instruction_source_paths: Vec::new(),
             session_network_proxy: None,
             status_line_invalid_items_warned,
@@ -270,9 +271,10 @@ impl ChatWidget {
         } else {
             widget.bottom_pane.set_vim_enabled(/*enabled*/ false);
         }
-        widget
-            .bottom_pane
-            .set_status_line_enabled(!widget.configured_status_line_items().is_empty());
+        widget.bottom_pane.set_status_line_enabled(
+            widget.custom_status_line_enabled()
+                || !widget.configured_status_line_items().is_empty(),
+        );
         widget
             .bottom_pane
             .set_collaboration_modes_enabled(/*enabled*/ true);

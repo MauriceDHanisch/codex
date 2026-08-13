@@ -106,7 +106,6 @@ pub(crate) enum GoalStatusIndicator {
 const MODE_CYCLE_HINT: &str = "shift+tab to cycle";
 const FOOTER_CONTEXT_GAP_COLS: u16 = 1;
 const AGENT_LABEL_COLOR: Color = Color::Rgb(225, 180, 245);
-pub(crate) const SIDE_CONVERSATION_LABEL: &str = "/btw";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct FooterKeyHints {

@@ -186,17 +186,24 @@ impl App {
         true
     }
 
-    /// Mirrors the visible thread into the contextual footer row.
+    /// Synchronizes the custom status line with the active sub-agent count.
     ///
-    /// The footer sometimes shows ambient context instead of an instructional hint. In multi-agent
-    /// sessions, that contextual row includes the currently viewed agent label. The label is
-    /// intentionally hidden until there is more than one known thread so single-thread sessions do
-    /// not spend footer space restating that the user is already on the main conversation.
+    /// The custom status line owns this display, so the built-in agent label is cleared to avoid
+    /// rendering a duplicate context marker in the footer.
     pub(super) fn sync_active_agent_label(&mut self) {
-        let label = self
+        let active_agents = self
             .agent_navigation
-            .active_agent_label(self.current_displayed_thread_id(), self.primary_thread_id);
-        self.chat_widget.set_active_agent_label(label);
+            .active_subagent_count(self.primary_thread_id);
+        let agent_label = self
+            .current_displayed_thread_id()
+            .filter(|thread_id| self.agent_navigation.is_parent_owned(*thread_id))
+            .map(|thread_id| {
+                self.agent_navigation
+                    .agent_label(thread_id, self.primary_thread_id)
+            });
+        self.chat_widget.set_active_agent_label(None);
+        self.chat_widget
+            .set_custom_status_line_agent_context(active_agents, agent_label);
         self.sync_side_thread_ui();
     }
 
@@ -1070,6 +1077,9 @@ impl App {
             self.mark_agent_picker_thread_closed(thread_id);
         } else if turn_stopped {
             self.agent_navigation.mark_stopped(thread_id);
+        }
+        if is_turn_started || turn_stopped {
+            self.sync_active_agent_label();
         }
 
         if let Some(notification) = notification {

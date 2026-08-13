@@ -6,6 +6,7 @@ use super::status_surfaces::permissions_display;
 use super::status_surfaces::weekly_status_window;
 use super::*;
 use crate::workspace_command::WorkspaceCommand;
+use codex_protocol::config_types::ServiceTier;
 use serde::Serialize;
 
 const CUSTOM_STATUS_LINE_REFRESH_INTERVAL: Duration = Duration::from_secs(/*secs*/ 1);
@@ -52,6 +53,8 @@ struct CustomStatusLineInput {
     last_turn: CustomStatusLineTokenUsage,
     thinking: CustomStatusLineThinking,
     effort: CustomStatusLineEffort,
+    service_tier: CustomStatusLineServiceTier,
+    conversation: CustomStatusLineConversation,
     rate_limits: CustomStatusLineRateLimits,
     agent_state: String,
     permissions: String,
@@ -94,6 +97,18 @@ struct CustomStatusLineThinking {
 #[derive(Serialize)]
 struct CustomStatusLineEffort {
     level: String,
+}
+
+#[derive(Serialize)]
+struct CustomStatusLineServiceTier {
+    fast_enabled: bool,
+}
+
+#[derive(Serialize)]
+struct CustomStatusLineConversation {
+    kind: &'static str,
+    active_agents: usize,
+    agent_label: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -173,6 +188,21 @@ impl ChatWidget {
                     .as_ref()
                     .map(|effort| effort.as_str().to_string())
                     .unwrap_or_else(|| "none".to_string()),
+            },
+            service_tier: CustomStatusLineServiceTier {
+                fast_enabled: self.current_service_tier()
+                    == Some(ServiceTier::Fast.request_value()),
+            },
+            conversation: CustomStatusLineConversation {
+                kind: if self.blocks_direct_input {
+                    "agent"
+                } else if self.active_side_conversation {
+                    "side"
+                } else {
+                    "main"
+                },
+                active_agents: self.custom_status_line_active_agents,
+                agent_label: self.custom_status_line_agent_label.clone(),
             },
             rate_limits: CustomStatusLineRateLimits {
                 five_hour: custom_status_line_rate_limit_window(five_hour),

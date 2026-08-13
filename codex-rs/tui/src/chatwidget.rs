@@ -419,9 +419,11 @@ mod windows_sandbox_prompts;
 use self::status_state::StatusIndicatorState;
 use self::status_state::StatusState;
 use self::status_state::TerminalTitleStatusKind;
+mod custom_status_line;
 mod status_controls;
 mod status_surfaces;
 mod streaming;
+use self::custom_status_line::CustomStatusLineState;
 use self::status_surfaces::CachedProjectRootName;
 mod tokens;
 pub(crate) use self::tokens::TokenActivityView;
@@ -714,6 +716,7 @@ pub(crate) struct ChatWidget {
     current_cwd: Option<PathBuf>,
     // App-server-backed command runner for status-line workspace metadata lookups.
     workspace_command_runner: Option<WorkspaceCommandRunner>,
+    custom_status_line_state: CustomStatusLineState,
     // Instruction source files loaded for the current session, supplied by app-server.
     instruction_source_paths: Vec<PathUri>,
     // Runtime network proxy bind addresses from SessionConfigured.
@@ -1202,6 +1205,7 @@ impl ChatWidget {
         self.update_due_hook_visibility();
         self.schedule_hook_timer_if_needed();
         self.bottom_pane.pre_draw_tick();
+        self.refresh_custom_status_line_if_due();
         if let Some(pet) = self.ambient_pet.as_ref() {
             pet.schedule_next_frame();
         }

@@ -728,6 +728,13 @@ pub struct Tui {
     #[serde(default)]
     pub status_line: Option<Vec<String>>,
 
+    /// Shell command that renders the TUI status line from JSON input.
+    ///
+    /// When set, this takes precedence over `status_line`. Codex invokes the command from the
+    /// active workspace, writes status data to stdin, and renders ANSI-styled stdout.
+    #[serde(default)]
+    pub status_line_command: Option<String>,
+
     /// Color status line items with colors derived from the active syntax theme.
     /// Defaults to `true`.
     #[serde(default = "default_true")]

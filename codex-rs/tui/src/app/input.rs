@@ -224,7 +224,8 @@ impl App {
         if app_keymap_shortcuts_available
             && (side_toggle_bindings.is_pressed(key_event)
                 || side_toggle_bindings.contains(&crate::key_hint::ctrl(KeyCode::Char('/')))
-                    && crate::key_hint::ctrl(KeyCode::Char('7')).is_press(key_event))
+                    && (crate::key_hint::ctrl(KeyCode::Char('7')).is_press(key_event)
+                        || crate::key_hint::ctrl(KeyCode::Char('_')).is_press(key_event)))
         {
             if let Err(err) = self.toggle_side_conversation(tui, app_server).await {
                 self.chat_widget

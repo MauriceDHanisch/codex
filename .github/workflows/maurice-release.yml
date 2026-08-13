@@ -41,6 +41,19 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Set release version
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_version="${GITHUB_REF_NAME#v}"
+          release_version="${release_version%%-maurice.*}"
+          if [[ ! "${release_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release version derived from ${GITHUB_REF_NAME}: ${release_version}"
+            exit 1
+          fi
+          sed -i.bak -E "s/^version = \"[^\"]+\"/version = \"${release_version}\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          grep -m1 '^version = ' Cargo.toml
       - name: Install Linux build dependencies
         if: ${{ runner.os == 'Linux' }}
         shell: bash

@@ -788,6 +788,12 @@ impl ChatWidget {
                     name: Some(trimmed.to_string()),
                 });
             }
+            SlashCommand::Changes if trimmed.eq_ignore_ascii_case("clear") => {
+                self.app_event_tx.send(AppEvent::ClearSessionChanges);
+            }
+            SlashCommand::Changes => {
+                self.add_error_message("Usage: /changes [clear]".to_string());
+            }
             SlashCommand::Fork if !trimmed.is_empty() => {
                 self.app_event_tx.send(AppEvent::ForkCurrentSession {
                     name: Some(trimmed.to_string()),

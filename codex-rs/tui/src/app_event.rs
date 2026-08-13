@@ -627,6 +627,9 @@ pub(crate) enum AppEvent {
     /// Open the explorer for changes made by the current chat.
     OpenChanges,
 
+    /// Reset the explorer baseline without changing the workspace or transcript.
+    ClearSessionChanges,
+
     /// Open the app link view in the bottom pane.
     OpenAppLink {
         app_id: String,

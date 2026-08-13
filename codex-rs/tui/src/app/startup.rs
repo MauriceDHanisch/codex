@@ -4,6 +4,7 @@
 //! remains isolated from protected interactive requests until the initialized composer owns it.
 
 use super::*;
+use crate::app::session_lifecycle::ThreadAttachPresentation;
 use crate::session_start::SessionStartAction;
 use crate::session_start::cancel_session_start;
 use crate::session_start::complete_session_start;
@@ -267,6 +268,7 @@ impl App {
             &session_selection,
             SessionSelection::StartFresh | SessionSelection::Exit
         );
+        let initial_thread_is_fork = matches!(&session_selection, SessionSelection::Fork(_));
         let start_in_agents_overview =
             matches!(&session_selection, SessionSelection::AgentsOverview);
         let (mut chat_widget, initial_started_thread) = match session_selection {
@@ -562,7 +564,15 @@ See the Codex keymap documentation for supported actions and examples."
             match startup_draft
                 .run_until(
                     tui,
-                    app.enqueue_primary_thread_session(started.session, started.turns),
+                    app.enqueue_primary_thread_session_with_presentation(
+                        started.session,
+                        started.turns,
+                        if initial_thread_is_fork {
+                            ThreadAttachPresentation::Fork
+                        } else {
+                            ThreadAttachPresentation::SessionLineage
+                        },
+                    ),
                 )
                 .await
             {

@@ -40,12 +40,20 @@ impl TokenUsage {
         self.total_tokens
     }
 
+    pub(crate) fn tokens_used_in_context_window(&self) -> i64 {
+        (self.tokens_in_context_window() - BASELINE_TOKENS).max(0)
+    }
+
+    pub(crate) fn effective_context_window_size(context_window: i64) -> i64 {
+        (context_window - BASELINE_TOKENS).max(0)
+    }
+
     pub(crate) fn percent_of_context_window_remaining(&self, context_window: i64) -> i64 {
-        if context_window <= BASELINE_TOKENS {
+        let effective_window = Self::effective_context_window_size(context_window);
+        if effective_window == 0 {
             return 0;
         }
-        let effective_window = context_window - BASELINE_TOKENS;
-        let used = (self.tokens_in_context_window() - BASELINE_TOKENS).max(0);
+        let used = self.tokens_used_in_context_window();
         let remaining = (effective_window - used).max(0);
         ((remaining as f64 / effective_window as f64) * 100.0)
             .clamp(0.0, 100.0)

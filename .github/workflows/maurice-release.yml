@@ -1,12 +1,9 @@
 name: maurice-release
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Release tag, for example v0.147.0-maurice.1
-        required: true
-        type: string
+  push:
+    tags:
+      - "v*-maurice.*"
 
 permissions:
   contents: write
@@ -16,42 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  prepare:
-    runs-on: ubuntu-24.04
-    outputs:
-      commit: ${{ steps.release.outputs.commit }}
-      tag: ${{ steps.release.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          persist-credentials: true
-      - id: release
-        env:
-          TAG: ${{ inputs.tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "${GITHUB_REF}" == "refs/heads/maurice" ]] || {
-            echo "Run releases from the maurice branch." >&2
-            exit 1
-          }
-          [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-maurice\.[0-9]+$ ]] || {
-            echo "Invalid release tag: ${TAG}" >&2
-            exit 1
-          }
-          git fetch --tags origin
-          if git rev-parse --verify --quiet "refs/tags/${TAG}"; then
-            echo "Tag ${TAG} already exists." >&2
-            exit 1
-          fi
-          git tag --annotate "${TAG}" --message "${TAG}"
-          git push origin "${TAG}"
-          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-
   build:
-    needs: prepare
     name: build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
@@ -71,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.prepare.outputs.commit }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Install Linux build dependencies
         if: ${{ runner.os == 'Linux' }}
@@ -148,7 +110,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [prepare, build]
+    needs: build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v5
@@ -162,8 +124,8 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.prepare.outputs.tag }}
-          TARGET: ${{ needs.prepare.outputs.commit }}
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail

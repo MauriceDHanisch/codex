@@ -258,6 +258,15 @@ impl AgentNavigationState {
             .count()
     }
 
+    pub(crate) fn stopped_subagent_count(&self, primary_thread_id: Option<ThreadId>) -> usize {
+        self.threads
+            .iter()
+            .filter(|(thread_id, entry)| {
+                Some(**thread_id) != primary_thread_id && !entry.is_running && !entry.is_closed
+            })
+            .count()
+    }
+
     pub(crate) fn agent_label(
         &self,
         thread_id: ThreadId,
@@ -507,5 +516,17 @@ mod tests {
 
         state.mark_closed(first_agent_id);
         assert_eq!(state.active_subagent_count(Some(main_thread_id)), 1);
+    }
+
+    #[test]
+    fn stopped_subagent_count_excludes_primary_running_and_closed_agents() {
+        let (mut state, main_thread_id, first_agent_id, second_agent_id) = populated_state();
+
+        state.mark_running(main_thread_id);
+        state.mark_running(first_agent_id);
+        assert_eq!(state.stopped_subagent_count(Some(main_thread_id)), 1);
+
+        state.mark_closed(second_agent_id);
+        assert_eq!(state.stopped_subagent_count(Some(main_thread_id)), 0);
     }
 }

@@ -108,6 +108,7 @@ struct CustomStatusLineServiceTier {
 struct CustomStatusLineConversation {
     kind: &'static str,
     active_agents: usize,
+    stopped_agents: usize,
     agent_label: Option<String>,
 }
 
@@ -202,6 +203,7 @@ impl ChatWidget {
                     "main"
                 },
                 active_agents: self.custom_status_line_active_agents,
+                stopped_agents: self.custom_status_line_stopped_agents,
                 agent_label: self.custom_status_line_agent_label.clone(),
             },
             rate_limits: CustomStatusLineRateLimits {

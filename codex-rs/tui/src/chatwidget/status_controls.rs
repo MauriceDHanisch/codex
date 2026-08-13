@@ -88,9 +88,11 @@ impl ChatWidget {
     pub(crate) fn set_custom_status_line_agent_context(
         &mut self,
         active_agents: usize,
+        stopped_agents: usize,
         agent_label: Option<String>,
     ) {
         self.custom_status_line_active_agents = active_agents;
+        self.custom_status_line_stopped_agents = stopped_agents;
         self.custom_status_line_agent_label = agent_label;
     }
 

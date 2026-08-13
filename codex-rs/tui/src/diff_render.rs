@@ -389,7 +389,7 @@ fn collect_rows(changes: &HashMap<PathBuf, FileChange>) -> Vec<Row<'_>> {
     rows
 }
 
-fn line_counts(change: &FileChange) -> (usize, usize) {
+pub(crate) fn line_counts(change: &FileChange) -> (usize, usize) {
     match change {
         FileChange::Add { content } => (content.lines().count(), 0),
         FileChange::Delete { content } => (0, content.lines().count()),

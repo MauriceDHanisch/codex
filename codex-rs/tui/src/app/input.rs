@@ -263,6 +263,11 @@ impl App {
             return;
         }
 
+        if app_keymap_shortcuts_available && self.keymap.app.open_changes.is_pressed(key_event) {
+            self.open_changes_overlay(tui);
+            return;
+        }
+
         if app_keymap_shortcuts_available
             && self.keymap.app.open_external_editor.is_pressed(key_event)
         {

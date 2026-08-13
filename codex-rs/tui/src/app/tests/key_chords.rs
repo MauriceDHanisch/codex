@@ -61,6 +61,21 @@ fn ctrl(ch: char) -> KeyEvent {
 }
 
 #[tokio::test]
+async fn ctrl_x_opens_changes_explorer_by_default() -> Result<()> {
+    let mut app = make_test_app().await;
+    let mut app_server = start_config_write_test_app_server(&app).await?;
+    let mut tui = crate::tui::test_support::make_test_tui()?;
+
+    press(&mut app, &mut tui, &mut app_server, ctrl('x')).await?;
+
+    assert!(matches!(
+        app.overlay,
+        Some(crate::pager_overlay::Overlay::Changes(_))
+    ));
+    Ok(())
+}
+
+#[tokio::test]
 async fn completed_global_chord_reuses_the_existing_action_handler() -> Result<()> {
     let (mut app, mut tui, mut app_server) = chord_app().await?;
 

@@ -482,6 +482,9 @@ pub(crate) enum AppEvent {
     /// Result of computing a `/diff` command.
     DiffResult(String),
 
+    /// Open the explorer for changes made by the current chat.
+    OpenChanges,
+
     /// Open the app link view in the bottom pane.
     OpenAppLink {
         app_id: String,

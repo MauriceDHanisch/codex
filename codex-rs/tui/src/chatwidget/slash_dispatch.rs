@@ -433,6 +433,9 @@ impl ChatWidget {
                     tx.send(AppEvent::DiffResult(text));
                 });
             }
+            SlashCommand::Changes => {
+                self.app_event_tx.send(AppEvent::OpenChanges);
+            }
             SlashCommand::Mention => {
                 self.insert_str("@");
             }
@@ -1099,6 +1102,7 @@ impl ChatWidget {
             | SlashCommand::Raw
             | SlashCommand::Vim
             | SlashCommand::Diff
+            | SlashCommand::Changes
             | SlashCommand::App
             | SlashCommand::Rename
             | SlashCommand::TestApproval => QueueDrain::Continue,

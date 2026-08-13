@@ -15,13 +15,22 @@
 //! recomputed. `ChatWidget` is responsible for producing a key that changes when the active cell
 //! mutates in place or when its transcript output is time-dependent.
 
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::io::Result;
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::chatwidget::ActiveCellTranscriptKey;
+use crate::diff_model::FileChange;
+use crate::diff_model::SessionFileChange;
+use crate::diff_render::display_path_for;
+use crate::diff_render::line_counts;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::SessionInfoCell;
 use crate::history_cell::UserHistoryCell;
+use crate::history_cell::new_patch_event;
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
 use crate::key_hint::KeyBindingListExt;
@@ -36,8 +45,10 @@ use crate::terminal_hyperlinks::mark_buffer_hyperlinks;
 use crate::terminal_hyperlinks::visible_lines_ref;
 use crate::tui;
 use crate::tui::TuiEvent;
+use codex_utils_absolute_path::AbsolutePathBuf;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
+use crossterm::event::KeyEventKind;
 use ratatui::buffer::Buffer;
 use ratatui::buffer::Cell;
 use ratatui::layout::Rect;
@@ -54,6 +65,7 @@ use ratatui::widgets::Wrap;
 pub(crate) enum Overlay {
     Transcript(TranscriptOverlay),
     Static(StaticOverlay),
+    Changes(Box<ChangesOverlay>),
 }
 
 impl Overlay {
@@ -77,10 +89,19 @@ impl Overlay {
         Self::Static(StaticOverlay::with_renderables(renderables, title, keymap))
     }
 
+    pub(crate) fn new_changes(
+        changes: HashMap<PathBuf, Arc<SessionFileChange>>,
+        cwd: AbsolutePathBuf,
+        keymap: PagerKeymap,
+    ) -> Self {
+        Self::Changes(Box::new(ChangesOverlay::new(changes, cwd, keymap)))
+    }
+
     pub(crate) fn handle_event(&mut self, tui: &mut tui::Tui, event: TuiEvent) -> Result<()> {
         match self {
             Overlay::Transcript(o) => o.handle_event(tui, event),
             Overlay::Static(o) => o.handle_event(tui, event),
+            Overlay::Changes(o) => o.handle_event(tui, event),
         }
     }
 
@@ -88,8 +109,376 @@ impl Overlay {
         match self {
             Overlay::Transcript(o) => o.is_done(),
             Overlay::Static(o) => o.is_done(),
+            Overlay::Changes(o) => o.is_done(),
         }
     }
+}
+
+/// Full-screen explorer for file changes recorded by the active chat.
+pub(crate) struct ChangesOverlay {
+    changes: HashMap<PathBuf, Arc<SessionFileChange>>,
+    summaries: Vec<FileChange>,
+    paths: Vec<PathBuf>,
+    tree_rows: Vec<ChangesTreeRow>,
+    tree_view: bool,
+    selected: usize,
+    cwd: AbsolutePathBuf,
+    keymap: PagerKeymap,
+    preview: Option<ChangesPreview>,
+    is_done: bool,
+}
+
+struct ChangesTreeRow {
+    file_index: Option<usize>,
+    depth: usize,
+    label: String,
+}
+
+struct ChangesPreview {
+    area: Rect,
+    overlay: StaticOverlay,
+}
+
+impl ChangesOverlay {
+    fn new(
+        changes: HashMap<PathBuf, Arc<SessionFileChange>>,
+        cwd: AbsolutePathBuf,
+        keymap: PagerKeymap,
+    ) -> Self {
+        let mut paths = changes.keys().cloned().collect::<Vec<_>>();
+        paths.sort();
+        let summaries = paths
+            .iter()
+            .map(|path| changes[path].display_change(/*context*/ 0))
+            .collect();
+        let tree_rows = changes_tree_rows(&paths, cwd.as_path());
+        Self {
+            changes,
+            summaries,
+            paths,
+            tree_rows,
+            tree_view: true,
+            selected: 0,
+            cwd,
+            keymap,
+            preview: None,
+            is_done: false,
+        }
+    }
+
+    fn open_preview(&mut self, area: Rect) {
+        let Some(path) = self.paths.get(self.selected) else {
+            return;
+        };
+        let session_change = self.changes[path].as_ref();
+        let mut lines = session_change_warning_lines(session_change);
+        if !session_change.reconstruction_unavailable() {
+            let change = adaptive_preview_change(session_change, path, self.cwd.as_path(), area);
+            let cell = new_patch_event(HashMap::from([(path.clone(), change)]), self.cwd.as_path());
+            lines.extend(cell.display_lines(area.width));
+        }
+        self.preview = Some(ChangesPreview {
+            area,
+            overlay: StaticOverlay::with_title(
+                lines,
+                format!("C H A N G E S  ·  {}", path.display()),
+                self.keymap.clone(),
+            ),
+        });
+    }
+
+    fn ensure_preview_size(&mut self, area: Rect) {
+        if self
+            .preview
+            .as_ref()
+            .is_some_and(|preview| preview.area != area)
+        {
+            self.open_preview(area);
+        }
+    }
+
+    fn render_flat_lines(&self, height: usize) -> Vec<Line<'static>> {
+        let start = self.selected.saturating_sub(height.saturating_sub(1));
+        self.paths
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(height)
+            .filter_map(|(index, path)| {
+                let change = self.summaries.get(index)?;
+                let prefix = if index == self.selected { "›" } else { " " };
+                Some(change_file_line(
+                    prefix,
+                    change,
+                    self.changes[path].reconstruction_unavailable(),
+                    display_path_for(path, self.cwd.as_path()),
+                    index == self.selected,
+                    /*indent*/ String::new(),
+                ))
+            })
+            .collect()
+    }
+
+    fn render_tree_lines(&self, height: usize) -> Vec<Line<'static>> {
+        let selected_row = self
+            .tree_rows
+            .iter()
+            .position(|row| row.file_index == Some(self.selected))
+            .unwrap_or_default();
+        let start = selected_row.saturating_sub(height.saturating_sub(1));
+        self.tree_rows
+            .iter()
+            .skip(start)
+            .take(height)
+            .map(|row| {
+                let indent = "  ".repeat(row.depth);
+                if let Some(file_index) = row.file_index {
+                    let change = &self.summaries[file_index];
+                    let prefix = if file_index == self.selected {
+                        "›"
+                    } else {
+                        " "
+                    };
+                    change_file_line(
+                        prefix,
+                        change,
+                        self.changes[&self.paths[file_index]].reconstruction_unavailable(),
+                        row.label.clone(),
+                        file_index == self.selected,
+                        indent,
+                    )
+                } else {
+                    format!("{indent}▾ {}", row.label).bold().into()
+                }
+            })
+            .collect()
+    }
+
+    fn render_explorer(&self, area: Rect, buf: &mut Buffer) {
+        Clear.render(area, buf);
+        let title = if self.tree_view {
+            "C H A N G E S  ·  T R E E"
+        } else {
+            "C H A N G E S"
+        };
+        Span::from(format!("/ {title}"))
+            .dim()
+            .render(Rect::new(area.x, area.y, area.width, 1), buf);
+        let footer_height = 2;
+        let content = Rect::new(
+            area.x,
+            area.y.saturating_add(2),
+            area.width,
+            area.height.saturating_sub(2 + footer_height),
+        );
+        let visible = content.height as usize;
+        let file_label = if self.paths.len() == 1 {
+            "file"
+        } else {
+            "files"
+        };
+        let mut lines = vec![
+            format!("{} {file_label} changed", self.paths.len())
+                .dim()
+                .into(),
+        ];
+        lines.extend(if self.tree_view {
+            self.render_tree_lines(visible.saturating_sub(1))
+        } else {
+            self.render_flat_lines(visible.saturating_sub(1))
+        });
+        Paragraph::new(lines).render(content, buf);
+        Paragraph::new("↑↓ select   enter preview   t toggle tree   esc close".dim()).render(
+            Rect::new(
+                area.x,
+                area.bottom().saturating_sub(footer_height),
+                area.width,
+                1,
+            ),
+            buf,
+        );
+    }
+
+    pub(crate) fn handle_event(&mut self, tui: &mut tui::Tui, event: TuiEvent) -> Result<()> {
+        if self.preview.is_some() {
+            match event {
+                TuiEvent::Key(key_event)
+                    if self.keymap.close.is_pressed(key_event)
+                        || (key_is_press_or_repeat(key_event)
+                            && (key_event.code == KeyCode::Esc
+                                || (key_event.modifiers.is_empty()
+                                    && key_event.code == KeyCode::Left))) =>
+                {
+                    self.preview = None;
+                    return self.handle_event(tui, TuiEvent::Draw);
+                }
+                TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) => {
+                    tui.draw(u16::MAX, |frame| {
+                        self.ensure_preview_size(frame.area());
+                        if let Some(preview) = self.preview.as_mut() {
+                            preview.overlay.render(frame.area(), frame.buffer);
+                            render_changes_preview_hints(frame.area(), frame.buffer, &self.keymap);
+                        }
+                    })?;
+                    return Ok(());
+                }
+                event => {
+                    if let Some(preview) = self.preview.as_mut() {
+                        return preview.overlay.handle_event(tui, event);
+                    }
+                    return Ok(());
+                }
+            }
+        }
+        if let TuiEvent::Key(key_event) = event {
+            if self.keymap.close.is_pressed(key_event)
+                || (key_is_press_or_repeat(key_event) && key_event.code == KeyCode::Esc)
+            {
+                self.is_done = true;
+                return Ok(());
+            }
+            if key_is_press_or_repeat(key_event)
+                && key_event.modifiers.is_empty()
+                && key_event.code == KeyCode::Char('t')
+            {
+                self.tree_view = !self.tree_view;
+            } else if self.keymap.scroll_up.is_pressed(key_event) {
+                self.selected = self.selected.saturating_sub(1);
+            } else if self.keymap.scroll_down.is_pressed(key_event) {
+                self.selected = (self.selected + 1).min(self.paths.len().saturating_sub(1));
+            } else if key_event.kind == KeyEventKind::Press && key_event.code == KeyCode::Enter {
+                self.open_preview(tui.terminal.viewport_area);
+            } else {
+                return Ok(());
+            }
+            return self.handle_event(tui, TuiEvent::Draw);
+        }
+        match event {
+            TuiEvent::Draw | TuiEvent::Resume | TuiEvent::Resize(_) => {
+                tui.draw(u16::MAX, |frame| {
+                    self.render_explorer(frame.area(), frame.buffer);
+                })?;
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub(crate) fn is_done(&self) -> bool {
+        self.is_done
+    }
+}
+
+fn key_is_press_or_repeat(event: KeyEvent) -> bool {
+    matches!(event.kind, KeyEventKind::Press | KeyEventKind::Repeat)
+}
+
+fn render_changes_preview_hints(area: Rect, buf: &mut Buffer, keymap: &PagerKeymap) {
+    let hints_area = Rect::new(
+        area.x,
+        area.bottom().saturating_sub(2),
+        area.width,
+        /*height*/ 1,
+    );
+    Clear.render(hints_area, buf);
+    let mut shortcuts = vec![
+        key_hint::plain(KeyCode::Esc).into(),
+        key_hint::plain(KeyCode::Left).into(),
+    ];
+    shortcuts.extend(first_or_empty(keymap, "close", &keymap.close));
+    render_key_hints(hints_area, buf, &[(shortcuts, "back")]);
+}
+
+fn adaptive_preview_change(
+    change: &SessionFileChange,
+    path: &Path,
+    cwd: &Path,
+    area: Rect,
+) -> FileChange {
+    let available_height = area.height.saturating_sub(5);
+    change.adaptive_display_change(available_height as usize, |display_change| {
+        let cell = new_patch_event(
+            HashMap::from([(path.to_path_buf(), display_change.clone())]),
+            cwd,
+        );
+        cell.desired_height(area.width) <= available_height
+    })
+}
+
+fn changes_tree_rows(paths: &[PathBuf], cwd: &Path) -> Vec<ChangesTreeRow> {
+    let mut seen_directories = BTreeSet::new();
+    let mut rows = Vec::new();
+    for (file_index, path) in paths.iter().enumerate() {
+        let display_path = display_path_for(path, cwd);
+        let parts = Path::new(&display_path)
+            .components()
+            .filter_map(|component| component.as_os_str().to_str())
+            .collect::<Vec<_>>();
+        for depth in 0..parts.len().saturating_sub(1) {
+            let directory = parts[..=depth].join("/");
+            if seen_directories.insert(directory) {
+                rows.push(ChangesTreeRow {
+                    file_index: None,
+                    depth,
+                    label: parts[depth].to_string(),
+                });
+            }
+        }
+        if let Some(name) = parts.last() {
+            rows.push(ChangesTreeRow {
+                file_index: Some(file_index),
+                depth: parts.len().saturating_sub(1),
+                label: (*name).to_string(),
+            });
+        }
+    }
+    rows
+}
+
+fn change_kind(change: &FileChange) -> &'static str {
+    match change {
+        FileChange::Add { .. } => "A",
+        FileChange::Delete { .. } => "D",
+        FileChange::Update { .. } => "M",
+    }
+}
+
+fn change_file_line(
+    prefix: &'static str,
+    change: &FileChange,
+    reconstruction_unavailable: bool,
+    label: String,
+    selected: bool,
+    indent: String,
+) -> Line<'static> {
+    let (added, removed) = line_counts(change);
+    let label = format!("{indent}{prefix} {}  {label} ", change_kind(change));
+    let label = if selected { label.cyan() } else { label.into() };
+    if reconstruction_unavailable {
+        return vec![label, "(unavailable)".magenta()].into();
+    }
+    vec![
+        label,
+        "(".into(),
+        format!("+{added}").green(),
+        " ".into(),
+        format!("-{removed}").red(),
+        ")".into(),
+    ]
+    .into()
+}
+
+fn session_change_warning_lines(change: &SessionFileChange) -> Vec<Line<'static>> {
+    if !change.reconstruction_unavailable() {
+        return Vec::new();
+    }
+    vec![
+        Line::from("The session diff cannot be reconstructed safely from the current file.")
+            .magenta()
+            .bold(),
+        Line::from("Use /diff to inspect the current workspace state.").dim(),
+        Line::from(""),
+    ]
 }
 
 fn first_or_empty(
@@ -1105,6 +1494,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::text::Text;
+    use similar::TextDiff;
 
     #[derive(Debug)]
     struct TestCell {
@@ -1868,5 +2258,136 @@ mod tests {
             pv.is_scrolled_to_bottom(),
             "expected view to report at bottom after scrolling to end"
         );
+    }
+
+    #[test]
+    fn session_change_explorer_supports_flat_and_tree_layouts() {
+        let changes = HashMap::from([
+            (
+                PathBuf::from("tui/src/footer.rs"),
+                updated_session_change("old\n", "new\n"),
+            ),
+            (
+                PathBuf::from("tui/src/changes_overlay.rs"),
+                Arc::new(SessionFileChange::from_completed(
+                    Some("new file\n".to_string()),
+                    FileChange::Add {
+                        content: "new file\n".to_string(),
+                    },
+                )),
+            ),
+        ]);
+        let mut overlay = ChangesOverlay::new(
+            changes,
+            AbsolutePathBuf::try_from(PathBuf::from("/workspace")).unwrap(),
+            default_pager_keymap(),
+        );
+        let area = Rect::new(0, 0, 60, 12);
+        let mut tree = Buffer::empty(area);
+        overlay.render_explorer(area, &mut tree);
+        overlay.tree_view = false;
+        let mut flat = Buffer::empty(area);
+        overlay.render_explorer(area, &mut flat);
+
+        assert_snapshot!(format!("flat:\n{flat:?}\n\ntree:\n{tree:?}"));
+    }
+
+    #[test]
+    fn session_change_preview_uses_diff_renderer() {
+        let changes = HashMap::from([(
+            PathBuf::from("tui/src/footer.rs"),
+            updated_session_change("old value\n", "new value\n"),
+        )]);
+        let mut overlay = ChangesOverlay::new(
+            changes,
+            AbsolutePathBuf::try_from(PathBuf::from("/workspace")).unwrap(),
+            default_pager_keymap(),
+        );
+        let area = Rect::new(0, 0, 80, 14);
+        overlay.open_preview(area);
+        let preview = overlay.preview.as_mut().unwrap();
+        let mut buffer = Buffer::empty(area);
+        preview.overlay.render(area, &mut buffer);
+
+        assert_snapshot!(format!("{buffer:?}"));
+    }
+
+    #[test]
+    fn adaptive_preview_uses_available_height_for_multiple_hunks() {
+        let original = (1..=20)
+            .map(|line| format!("line {line}\n"))
+            .collect::<String>();
+        let current = original
+            .replace("line 4\n", "changed 4\n")
+            .replace("line 17\n", "changed 17\n");
+        let change = updated_session_change(&original, &current);
+        let path = Path::new("src/example.rs");
+        let cwd = Path::new("/workspace");
+
+        let short = adaptive_preview_change(change.as_ref(), path, cwd, Rect::new(0, 0, 80, 12));
+        let tall = adaptive_preview_change(change.as_ref(), path, cwd, Rect::new(0, 0, 80, 30));
+        let short_lines =
+            new_patch_event(HashMap::from([(path.to_path_buf(), short)]), cwd).display_lines(80);
+        let tall_lines =
+            new_patch_event(HashMap::from([(path.to_path_buf(), tall)]), cwd).display_lines(80);
+
+        assert!(tall_lines.len() > short_lines.len());
+        let tall_text = tall_lines
+            .iter()
+            .map(Line::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(tall_text.contains("changed 4"));
+        assert!(tall_text.contains("changed 17"));
+    }
+
+    #[test]
+    fn adaptive_preview_bounds_context_for_a_large_file() {
+        let original = (1..=6_000)
+            .map(|line| format!("line {line}\n"))
+            .collect::<String>();
+        let current = original.replace("line 3000\n", "changed 3000\n");
+        let change = updated_session_change(&original, &current);
+        let path = Path::new("src/large.rs");
+        let cwd = Path::new("/workspace");
+        let area = Rect::new(0, 0, 80, 24);
+
+        let preview = adaptive_preview_change(change.as_ref(), path, cwd, area);
+        let lines = new_patch_event(HashMap::from([(path.to_path_buf(), preview)]), cwd)
+            .display_lines(area.width);
+
+        assert!(lines.len() <= area.height.saturating_sub(5) as usize);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.to_string().contains("changed 3000"))
+        );
+    }
+
+    #[test]
+    fn changes_overlay_ignores_key_release_events() {
+        assert!(!key_is_press_or_repeat(KeyEvent::new_with_kind(
+            KeyCode::Char('t'),
+            crossterm::event::KeyModifiers::NONE,
+            KeyEventKind::Release,
+        )));
+        assert!(key_is_press_or_repeat(KeyEvent::new(
+            KeyCode::Esc,
+            crossterm::event::KeyModifiers::NONE,
+        )));
+    }
+
+    fn updated_session_change(original: &str, current: &str) -> Arc<SessionFileChange> {
+        let fallback = FileChange::Update {
+            unified_diff: TextDiff::from_lines(original, current)
+                .unified_diff()
+                .context_radius(3)
+                .to_string(),
+            move_path: None,
+        };
+        Arc::new(
+            SessionFileChange::new(Some(original.to_string()), fallback.clone())
+                .complete(Some(current.to_string()), fallback),
+        )
     }
 }

@@ -76,6 +76,8 @@ pub(crate) struct RuntimeKeymap {
 pub(crate) struct AppKeymap {
     /// Open transcript overlay.
     pub(crate) open_transcript: Vec<KeyBinding>,
+    /// Open the session changes explorer.
+    pub(crate) open_changes: Vec<KeyBinding>,
     /// Open external editor for the current draft.
     pub(crate) open_external_editor: Vec<KeyBinding>,
     /// Copy the last agent response to the clipboard.
@@ -541,6 +543,8 @@ impl RuntimeKeymap {
                     || configured_context_alias_is_used(&keymap.list, alias)
                     || configured_context_alias_is_used(&keymap.approval, alias)
             });
+        let open_changes_default_is_shadowed = keymap.global.open_changes.is_none()
+            && configured_main_surface_stroke_is_used(keymap, "ctrl-x");
 
         let app = AppKeymap {
             open_transcript: resolve_bindings(
@@ -548,6 +552,15 @@ impl RuntimeKeymap {
                 &defaults.app.open_transcript,
                 "tui.keymap.global.open_transcript",
             )?,
+            open_changes: if open_changes_default_is_shadowed {
+                Vec::new()
+            } else {
+                resolve_bindings(
+                    keymap.global.open_changes.as_ref(),
+                    &defaults.app.open_changes,
+                    "tui.keymap.global.open_changes",
+                )?
+            },
             open_external_editor: resolve_bindings(
                 keymap.global.open_external_editor.as_ref(),
                 &defaults.app.open_external_editor,
@@ -956,6 +969,10 @@ impl RuntimeKeymap {
                 app.open_transcript.as_slice(),
             ),
             (
+                keymap.global.open_changes.as_ref(),
+                app.open_changes.as_slice(),
+            ),
+            (
                 keymap.global.open_external_editor.as_ref(),
                 app.open_external_editor.as_slice(),
             ),
@@ -1096,6 +1113,7 @@ impl RuntimeKeymap {
         Self {
             app: AppKeymap {
                 open_transcript: default_bindings![ctrl(KeyCode::Char('t'))],
+                open_changes: default_bindings![ctrl(KeyCode::Char('x'))],
                 open_external_editor: default_bindings![ctrl(KeyCode::Char('g'))],
                 copy: default_bindings![ctrl(KeyCode::Char('o'))],
                 clear_terminal: default_bindings![ctrl(KeyCode::Char('l'))],
@@ -1366,6 +1384,7 @@ impl RuntimeKeymap {
             "app",
             [
                 ("open_transcript", self.app.open_transcript.as_slice()),
+                ("open_changes", self.app.open_changes.as_slice()),
                 (
                     "open_external_editor",
                     self.app.open_external_editor.as_slice(),
@@ -1410,6 +1429,7 @@ impl RuntimeKeymap {
             "main",
             [
                 ("open_transcript", self.app.open_transcript.as_slice()),
+                ("open_changes", self.app.open_changes.as_slice()),
                 (
                     "open_external_editor",
                     self.app.open_external_editor.as_slice(),
@@ -1460,6 +1480,7 @@ impl RuntimeKeymap {
             "app",
             [
                 ("open_transcript", self.app.open_transcript.as_slice()),
+                ("open_changes", self.app.open_changes.as_slice()),
                 (
                     "open_external_editor",
                     self.app.open_external_editor.as_slice(),
@@ -1525,6 +1546,7 @@ impl RuntimeKeymap {
             "main",
             [
                 ("open_transcript", self.app.open_transcript.as_slice()),
+                ("open_changes", self.app.open_changes.as_slice()),
                 (
                     "open_external_editor",
                     self.app.open_external_editor.as_slice(),
@@ -2107,6 +2129,54 @@ fn configured_main_surface_alias_is_used(keymap: &TuiKeymap, alias: &str) -> boo
         || configured_context_alias_is_used(&keymap.vim_text_object, alias)
 }
 
+fn configured_main_surface_stroke_is_used(keymap: &TuiKeymap, stroke: &str) -> bool {
+    let mut global = keymap.global.clone();
+    if keymap.composer.submit.is_some() {
+        global.submit = None;
+    }
+    if keymap.composer.queue.is_some() {
+        global.queue = None;
+    }
+    if keymap.composer.toggle_shortcuts.is_some() {
+        global.toggle_shortcuts = None;
+    }
+
+    configured_context_stroke_is_used(&global, stroke)
+        || configured_context_stroke_is_used(&keymap.chat, stroke)
+        || configured_context_stroke_is_used(&keymap.composer, stroke)
+        || configured_context_stroke_is_used(&keymap.editor, stroke)
+        || configured_context_stroke_is_used(&keymap.vim_normal, stroke)
+        || configured_context_stroke_is_used(&keymap.vim_operator, stroke)
+        || configured_context_stroke_is_used(&keymap.vim_text_object, stroke)
+}
+
+fn configured_context_stroke_is_used(context: &impl Serialize, stroke: &str) -> bool {
+    let Ok(value) = serde_json::to_value(context) else {
+        return false;
+    };
+    keymap_value_contains_stroke(&value, stroke)
+}
+
+fn keymap_value_contains_stroke(value: &serde_json::Value, stroke: &str) -> bool {
+    match value {
+        serde_json::Value::String(value) => {
+            value == stroke
+                || value
+                    .strip_prefix(stroke)
+                    .is_some_and(|rest| rest.starts_with(' '))
+        }
+        serde_json::Value::Array(values) => values
+            .iter()
+            .any(|value| keymap_value_contains_stroke(value, stroke)),
+        serde_json::Value::Object(values) => values
+            .values()
+            .any(|value| keymap_value_contains_stroke(value, stroke)),
+        serde_json::Value::Bool(_) | serde_json::Value::Number(_) | serde_json::Value::Null => {
+            false
+        }
+    }
+}
+
 fn configured_context_alias_is_used(context: &impl Serialize, alias: &str) -> bool {
     let Ok(value) = serde_json::to_value(context) else {
         return false;
@@ -2401,6 +2471,43 @@ mod tests {
     fn default_copy_binding_is_ctrl_o() {
         let runtime = RuntimeKeymap::defaults();
         assert_eq!(runtime.app.copy, vec![key_hint::ctrl(KeyCode::Char('o'))]);
+    }
+
+    #[test]
+    fn open_changes_defaults_to_ctrl_x_and_can_be_remapped() {
+        let runtime = RuntimeKeymap::from_config(&TuiKeymap::default()).expect("default keymap");
+        assert_eq!(
+            runtime.app.open_changes,
+            vec![key_hint::ctrl(KeyCode::Char('x'))]
+        );
+
+        let mut keymap = TuiKeymap::default();
+        keymap.global.open_changes = Some(one("f12"));
+        let runtime = RuntimeKeymap::from_config(&keymap).expect("remapped keymap");
+        assert_eq!(
+            runtime.app.open_changes,
+            vec![key_hint::plain(KeyCode::F(12))]
+        );
+    }
+
+    #[test]
+    fn open_changes_default_yields_to_explicit_ctrl_x_bindings() {
+        for binding in ["ctrl-x", "ctrl-x ctrl-t"] {
+            let mut keymap = TuiKeymap::default();
+            keymap.global.open_transcript = Some(one(binding));
+
+            let runtime =
+                RuntimeKeymap::from_config(&keymap).expect("existing keymap remains valid");
+            assert!(runtime.app.open_changes.is_empty());
+        }
+    }
+
+    #[test]
+    fn explicit_open_changes_binding_rejects_conflicts() {
+        let mut keymap = TuiKeymap::default();
+        keymap.global.open_changes = Some(one("ctrl-l"));
+
+        expect_conflict(&keymap, "clear_terminal", "open_changes");
     }
 
     #[test]

@@ -355,7 +355,7 @@ fn custom_status_line_workspace_command(
     let mut request = WorkspaceCommand::new([
         "sh",
         "-c",
-        "printf '%s' \"$CODEX_STATUS_INPUT\" | sh -lc \"$CODEX_STATUS_COMMAND\"",
+        "printf '%s' \"$CODEX_STATUS_INPUT\" | sh -c \"$CODEX_STATUS_COMMAND\"",
     ])
     .cwd(cwd)
     .env("CODEX_STATUS_COMMAND", command)

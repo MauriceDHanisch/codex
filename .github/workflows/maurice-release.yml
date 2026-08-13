@@ -21,10 +21,8 @@ jobs:
       run:
         working-directory: codex-rs
     env:
-      CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ contains(matrix.target, 'apple-darwin') && 'packed' || 'off' }}
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-      SCCACHE_CACHE_SIZE: 5G
     strategy:
       fail-fast: false
       matrix:
@@ -60,55 +58,9 @@ jobs:
           echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
           echo "${cargo_home}/bin" >> "$GITHUB_PATH"
           : > "${cargo_home}/config.toml"
-      - name: Compute cache key
-        id: cache_key
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "lockfile=$(sha256sum Cargo.lock | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "toolchain=$(sha256sum rust-toolchain.toml | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - name: Restore Cargo dependency cache
-        id: cargo_cache
-        continue-on-error: true
-        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ${{ github.workspace }}/.cargo-home/registry/index/
-            ${{ github.workspace }}/.cargo-home/registry/cache/
-            ${{ github.workspace }}/.cargo-home/git/db/
-          key: cargo-release-${{ runner.os }}-${{ matrix.target }}-${{ steps.cache_key.outputs.lockfile }}-${{ steps.cache_key.outputs.toolchain }}
-          restore-keys: |
-            cargo-release-${{ runner.os }}-${{ matrix.target }}-
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           targets: ${{ matrix.target }}
-      - name: Install sccache
-        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
-        with:
-          tool: sccache@0.12.0
-      - name: Configure sccache
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -n "${ACTIONS_CACHE_URL:-}" && -n "${ACTIONS_RUNTIME_TOKEN:-}" ]]; then
-            echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-          else
-            echo "SCCACHE_GHA_ENABLED=false" >> "$GITHUB_ENV"
-            echo "SCCACHE_DIR=${{ github.workspace }}/.sccache" >> "$GITHUB_ENV"
-          fi
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-      - name: Restore sccache fallback cache
-        if: ${{ env.SCCACHE_GHA_ENABLED != 'true' }}
-        continue-on-error: true
-        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: ${{ github.workspace }}/.sccache/
-          key: sccache-release-${{ runner.os }}-${{ matrix.target }}-${{ steps.cache_key.outputs.lockfile }}-${{ github.run_id }}
-          restore-keys: |
-            sccache-release-${{ runner.os }}-${{ matrix.target }}-${{ steps.cache_key.outputs.lockfile }}-
       - name: Install Zig
         if: ${{ contains(matrix.target, 'linux-musl') }}
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
@@ -177,32 +129,6 @@ jobs:
           path: codex-rs/codex-${{ matrix.target }}.tar.gz
           if-no-files-found: error
           retention-days: 1
-      - name: Show and stop sccache
-        if: always()
-        continue-on-error: true
-        run: |
-          sccache --show-stats
-          sccache --stop-server
-      - name: Save Cargo dependency cache
-        if: ${{ always() && !cancelled() && steps.cargo_cache.outputs.cache-hit != 'true' }}
-        continue-on-error: true
-        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ${{ github.workspace }}/.cargo-home/registry/index/
-            ${{ github.workspace }}/.cargo-home/registry/cache/
-            ${{ github.workspace }}/.cargo-home/git/db/
-          key: cargo-release-${{ runner.os }}-${{ matrix.target }}-${{ steps.cache_key.outputs.lockfile }}-${{ steps.cache_key.outputs.toolchain }}
-      - name: Save sccache fallback cache
-        if: ${{ always() && !cancelled() && env.SCCACHE_GHA_ENABLED != 'true' }}
-        continue-on-error: true
-        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: ${{ github.workspace }}/.sccache/
-          key: sccache-release-${{ runner.os }}-${{ matrix.target }}-${{ steps.cache_key.outputs.lockfile }}-${{ github.run_id }}
   release:
     needs: build
     runs-on: ubuntu-24.04

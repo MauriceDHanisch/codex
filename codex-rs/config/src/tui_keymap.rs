@@ -96,6 +96,8 @@ pub struct TuiGlobalKeymap {
     pub open_agents: Option<KeybindingsSpec>,
     /// Open the transcript overlay.
     pub open_transcript: Option<KeybindingsSpec>,
+    /// Open the session changes explorer.
+    pub open_changes: Option<KeybindingsSpec>,
     /// Open the external editor for the current draft.
     pub open_external_editor: Option<KeybindingsSpec>,
     /// Copy the last agent response to the clipboard.
@@ -745,6 +747,16 @@ mod tests {
         "#;
         let keymap: TuiKeymap = toml::from_str(toml_input).expect("valid config");
         assert!(keymap.global.open_transcript.is_some());
+    }
+
+    #[test]
+    fn open_changes_under_global_context_is_accepted() {
+        let toml_input = r#"
+            [global]
+            open_changes = "ctrl-x"
+        "#;
+        let keymap: TuiKeymap = toml::from_str(toml_input).expect("valid config");
+        assert!(keymap.global.open_changes.is_some());
     }
 
     #[test]

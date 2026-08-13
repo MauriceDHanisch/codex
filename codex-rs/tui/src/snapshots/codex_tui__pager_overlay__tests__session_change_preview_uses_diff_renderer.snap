@@ -1,0 +1,44 @@
+---
+source: tui/src/pager_overlay.rs
+expression: "format!(\"{buffer:?}\")"
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 80, height: 14 },
+    content: [
+        "/ C H A N G E S  ·  tui/src/footer.rs / / / / / / / / / / / / / / / / / / / / / ",
+        "• Edited tui/src/footer.rs (+1 -1)                                              ",
+        "    1 -old value                                                                ",
+        "    1 +new value                                                                ",
+        "~                                                                               ",
+        "~                                                                               ",
+        "~                                                                               ",
+        "~                                                                               ",
+        "~                                                                               ",
+        "~                                                                               ",
+        "───────────────────────────────────────────────────────────────────────── 100% ─",
+        " ↑/↓ to scroll   pgup/pgdn to page   home/end to jump                           ",
+        " q to quit                                                                      ",
+        "                                                                                ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 2, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 8, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 28, y: 1, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 30, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 31, y: 1, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 33, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 4, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 6, y: 2, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 7, y: 2, fg: Rgb(205, 214, 244), bg: Reset, underline: Reset, modifier: DIM,
+        x: 16, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 4, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 6, y: 3, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
+        x: 7, y: 3, fg: Rgb(205, 214, 244), bg: Reset, underline: Reset, modifier: NONE,
+        x: 16, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 53, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 12, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 10, y: 12, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

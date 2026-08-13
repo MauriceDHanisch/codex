@@ -7,7 +7,39 @@ use super::*;
 use codex_utils_path_uri::LegacyAppPathString;
 
 impl ChatWidget {
+    pub(crate) fn session_file_changes(
+        &self,
+    ) -> (HashMap<PathBuf, Arc<SessionFileChange>>, AbsolutePathBuf) {
+        (
+            self.session_file_changes
+                .iter()
+                .filter_map(|(path, change)| {
+                    let change = if change.baseline_is_inferred() {
+                        change.resolve_inferred_baseline()
+                    } else {
+                        change.as_ref().clone()
+                    };
+                    change
+                        .is_changed()
+                        .then(|| (path.clone(), Arc::new(change)))
+                })
+                .collect(),
+            self.config.cwd.clone(),
+        )
+    }
+
     pub(super) fn on_patch_apply_begin(&mut self, changes: HashMap<PathBuf, FileChange>) {
+        for (path, change) in &changes {
+            let session_path = session_change_key(&self.session_file_changes, path);
+            self.session_file_changes
+                .entry(session_path)
+                .or_insert_with(|| {
+                    Arc::new(SessionFileChange::new(
+                        read_session_file(&self.config.cwd, path),
+                        change.clone(),
+                    ))
+                });
+        }
         self.add_to_history(history_cell::new_patch_event(changes, &self.config.cwd));
     }
 
@@ -152,13 +184,58 @@ impl ChatWidget {
     }
 
     pub(crate) fn handle_file_change_completed_now(&mut self, item: ThreadItem) {
-        let ThreadItem::FileChange { status, .. } = item else {
+        let ThreadItem::FileChange {
+            changes, status, ..
+        } = item
+        else {
             return;
         };
         // If the patch was successful, just let the "Edited" block stand.
         // Otherwise, add a failure block.
         if matches!(status, codex_app_server_protocol::PatchApplyStatus::Failed) {
             self.add_to_history(history_cell::new_patch_apply_failure(String::new()));
+        }
+        if !matches!(
+            status,
+            codex_app_server_protocol::PatchApplyStatus::Completed
+        ) {
+            for path in file_update_changes_to_display(changes.clone()).into_keys() {
+                let session_path = session_change_key(&self.session_file_changes, &path);
+                if self
+                    .session_file_changes
+                    .get(&session_path)
+                    .is_some_and(|change| !change.is_completed())
+                {
+                    self.session_file_changes.remove(&session_path);
+                }
+            }
+        }
+        if matches!(
+            status,
+            codex_app_server_protocol::PatchApplyStatus::Completed
+        ) {
+            for (path, change) in file_update_changes_to_display(changes) {
+                let session_path = session_change_key(&self.session_file_changes, &path);
+                let current_path = match &change {
+                    FileChange::Update {
+                        move_path: Some(move_path),
+                        ..
+                    } => move_path,
+                    _ => &path,
+                };
+                let current_content = read_session_file(&self.config.cwd, current_path);
+                let session_change = self
+                    .session_file_changes
+                    .get(&session_path)
+                    .map(|existing| existing.complete(current_content.clone(), change.clone()))
+                    .unwrap_or_else(|| SessionFileChange::from_completed(current_content, change));
+                if session_change.is_changed() {
+                    self.session_file_changes
+                        .insert(session_path, Arc::new(session_change));
+                } else {
+                    self.session_file_changes.remove(&session_path);
+                }
+            }
         }
         // Mark that actual work was done (patch applied)
         self.transcript.had_work_activity = true;
@@ -273,5 +350,45 @@ impl ChatWidget {
             item @ ThreadItem::McpToolCall { .. } => self.handle_mcp_tool_call_completed_now(item),
             _ => {}
         }
+    }
+}
+
+fn read_session_file(cwd: &AbsolutePathBuf, path: &Path) -> Option<String> {
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.as_path().join(path)
+    };
+    std::fs::read_to_string(path).ok()
+}
+
+fn session_change_key(changes: &HashMap<PathBuf, Arc<SessionFileChange>>, path: &Path) -> PathBuf {
+    if changes.contains_key(path) {
+        return path.to_path_buf();
+    }
+    changes
+        .iter()
+        .find_map(|(session_path, change)| change.moved_to(path).then(|| session_path.clone()))
+        .unwrap_or_else(|| path.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn later_edit_uses_the_original_session_key_after_a_move() {
+        let source = PathBuf::from("source.txt");
+        let destination = PathBuf::from("destination.txt");
+        let change = FileChange::Update {
+            unified_diff: String::new(),
+            move_path: Some(destination.clone()),
+        };
+        let session_change = SessionFileChange::new(Some("same\n".to_string()), change.clone())
+            .complete(Some("same\n".to_string()), change);
+        let changes = HashMap::from([(source.clone(), Arc::new(session_change))]);
+
+        assert_eq!(session_change_key(&changes, &destination), source);
     }
 }

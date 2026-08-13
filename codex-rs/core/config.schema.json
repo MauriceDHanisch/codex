@@ -3835,6 +3835,7 @@
               "clear_terminal": null,
               "copy": null,
               "open_agents": null,
+              "open_changes": null,
               "open_external_editor": null,
               "open_transcript": null,
               "queue": null,
@@ -4469,6 +4470,14 @@
           ],
           "description": "Open the shared agent-session overview."
         },
+        "open_changes": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/KeybindingsSpec"
+            }
+          ],
+          "description": "Open the session changes explorer."
+        },
         "open_external_editor": {
           "allOf": [
             {
@@ -4645,6 +4654,7 @@
             "clear_terminal": null,
             "copy": null,
             "open_agents": null,
+            "open_changes": null,
             "open_external_editor": null,
             "open_transcript": null,
             "queue": null,

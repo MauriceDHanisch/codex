@@ -17,6 +17,7 @@
 
 mod scrolling;
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::io::Result;
@@ -121,8 +122,10 @@ pub(crate) struct ChangesOverlay {
     summaries: Vec<FileChange>,
     paths: Vec<PathBuf>,
     tree_rows: Vec<ChangesTreeRow>,
+    collapsed_directories: BTreeSet<PathBuf>,
     tree_view: bool,
     selected: usize,
+    tree_selected: usize,
     cwd: AbsolutePathBuf,
     keymap: PagerKeymap,
     preview: Option<ChangesPreview>,
@@ -131,8 +134,18 @@ pub(crate) struct ChangesOverlay {
 
 struct ChangesTreeRow {
     file_index: Option<usize>,
+    directory: Option<PathBuf>,
     depth: usize,
     label: String,
+    is_last: bool,
+    ancestor_last: Vec<bool>,
+    ancestors: Vec<PathBuf>,
+}
+
+#[derive(Default)]
+struct ChangesTreeNode {
+    directories: BTreeMap<String, ChangesTreeNode>,
+    files: BTreeMap<String, usize>,
 }
 
 struct ChangesPreview {
@@ -153,13 +166,19 @@ impl ChangesOverlay {
             .map(|path| changes[path].display_change(/*context*/ 0))
             .collect();
         let tree_rows = changes_tree_rows(&paths, cwd.as_path());
+        let tree_selected = tree_rows
+            .iter()
+            .position(|row| row.file_index == Some(0))
+            .unwrap_or_default();
         Self {
             changes,
             summaries,
             paths,
             tree_rows,
+            collapsed_directories: BTreeSet::new(),
             tree_view: true,
             selected: 0,
+            tree_selected,
             cwd,
             keymap,
             preview: None,
@@ -168,7 +187,15 @@ impl ChangesOverlay {
     }
 
     fn open_preview(&mut self, area: Rect) {
-        let Some(path) = self.paths.get(self.selected) else {
+        let file_index = if self.tree_view {
+            self.selected_tree_file_index()
+        } else {
+            Some(self.selected)
+        };
+        let Some(file_index) = file_index else {
+            return;
+        };
+        let Some(path) = self.paths.get(file_index) else {
             return;
         };
         let session_change = self.changes[path].as_ref();
@@ -221,35 +248,43 @@ impl ChangesOverlay {
     }
 
     fn render_tree_lines(&self, height: usize) -> Vec<Line<'static>> {
-        let selected_row = self
-            .tree_rows
+        let visible_rows = self.visible_tree_row_indices();
+        let selected_row = visible_rows
             .iter()
-            .position(|row| row.file_index == Some(self.selected))
+            .position(|row_index| *row_index == self.tree_selected)
             .unwrap_or_default();
         let start = selected_row.saturating_sub(height.saturating_sub(1));
-        self.tree_rows
+        visible_rows
             .iter()
             .skip(start)
             .take(height)
-            .map(|row| {
-                let indent = "  ".repeat(row.depth);
+            .map(|row_index| {
+                let row = &self.tree_rows[*row_index];
+                let connector = tree_row_connector(row);
                 if let Some(file_index) = row.file_index {
                     let change = &self.summaries[file_index];
-                    let prefix = if file_index == self.selected {
-                        "›"
-                    } else {
-                        " "
-                    };
+                    let selected = *row_index == self.tree_selected;
+                    let prefix = if selected { "›" } else { " " };
                     change_file_line(
                         prefix,
                         change,
                         self.changes[&self.paths[file_index]].reconstruction_unavailable(),
                         row.label.clone(),
-                        file_index == self.selected,
-                        indent,
+                        selected,
+                        connector,
                     )
                 } else {
-                    format!("{indent}▾ {}", row.label).bold().into()
+                    let expanded = row
+                        .directory
+                        .as_ref()
+                        .is_some_and(|directory| !self.collapsed_directories.contains(directory));
+                    let indicator = if expanded { "▾" } else { "▸" };
+                    let line = format!("{connector}{indicator} {}", row.label);
+                    if *row_index == self.tree_selected {
+                        line.cyan().bold().into()
+                    } else {
+                        line.bold().into()
+                    }
                 }
             })
             .collect()
@@ -289,7 +324,13 @@ impl ChangesOverlay {
             self.render_flat_lines(visible.saturating_sub(1))
         });
         Paragraph::new(lines).render(content, buf);
-        Paragraph::new("↑↓ select   enter preview   t toggle tree   esc close".dim()).render(
+        let layout_hint = if self.tree_view { "t flat" } else { "t tree" };
+        let navigation_hint = if self.tree_view {
+            "↑↓ move   ←→ folder   enter open/toggle"
+        } else {
+            "↑↓ move   enter open"
+        };
+        Paragraph::new(format!("{navigation_hint}   {layout_hint}   esc").dim()).render(
             Rect::new(
                 area.x,
                 area.bottom().saturating_sub(footer_height),
@@ -343,12 +384,39 @@ impl ChangesOverlay {
                 && key_event.code == KeyCode::Char('t')
             {
                 self.tree_view = !self.tree_view;
+                if self.tree_view {
+                    self.sync_tree_selection_to_selected_file();
+                }
             } else if self.keymap.scroll_up.is_pressed(key_event) {
-                self.selected = self.selected.saturating_sub(1);
+                if self.tree_view {
+                    self.move_tree_selection(-1);
+                } else {
+                    self.selected = self.selected.saturating_sub(1);
+                }
             } else if self.keymap.scroll_down.is_pressed(key_event) {
-                self.selected = (self.selected + 1).min(self.paths.len().saturating_sub(1));
+                if self.tree_view {
+                    self.move_tree_selection(1);
+                } else {
+                    self.selected = (self.selected + 1).min(self.paths.len().saturating_sub(1));
+                }
+            } else if key_is_press_or_repeat(key_event)
+                && key_event.modifiers.is_empty()
+                && key_event.code == KeyCode::Left
+                && self.tree_view
+            {
+                self.move_tree_left();
+            } else if key_is_press_or_repeat(key_event)
+                && key_event.modifiers.is_empty()
+                && key_event.code == KeyCode::Right
+                && self.tree_view
+            {
+                self.move_tree_right();
             } else if key_event.kind == KeyEventKind::Press && key_event.code == KeyCode::Enter {
-                self.open_preview(tui.terminal.viewport_area);
+                if self.tree_view && self.toggle_selected_directory() {
+                    self.ensure_tree_selection_visible();
+                } else {
+                    self.open_preview(tui.terminal.viewport_area);
+                }
             } else {
                 return Ok(());
             }
@@ -367,6 +435,141 @@ impl ChangesOverlay {
 
     pub(crate) fn is_done(&self) -> bool {
         self.is_done
+    }
+
+    fn visible_tree_row_indices(&self) -> Vec<usize> {
+        self.tree_rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| {
+                row.ancestors
+                    .iter()
+                    .all(|ancestor| !self.collapsed_directories.contains(ancestor))
+            })
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    fn selected_tree_file_index(&self) -> Option<usize> {
+        self.tree_rows
+            .get(self.tree_selected)
+            .and_then(|row| row.file_index)
+    }
+
+    fn sync_tree_selection_to_selected_file(&mut self) {
+        if let Some(row_index) = self
+            .tree_rows
+            .iter()
+            .position(|row| row.file_index == Some(self.selected))
+        {
+            let ancestors = self.tree_rows[row_index].ancestors.clone();
+            for ancestor in ancestors {
+                self.collapsed_directories.remove(&ancestor);
+            }
+            self.tree_selected = row_index;
+        }
+    }
+
+    fn ensure_tree_selection_visible(&mut self) {
+        let visible_rows = self.visible_tree_row_indices();
+        if visible_rows.contains(&self.tree_selected) {
+            return;
+        }
+        self.tree_selected = visible_rows
+            .iter()
+            .copied()
+            .rev()
+            .find(|row_index| *row_index < self.tree_selected)
+            .or_else(|| visible_rows.first().copied())
+            .unwrap_or_default();
+        if let Some(file_index) = self.selected_tree_file_index() {
+            self.selected = file_index;
+        }
+    }
+
+    fn move_tree_selection(&mut self, delta: isize) {
+        let visible_rows = self.visible_tree_row_indices();
+        let Some(position) = visible_rows
+            .iter()
+            .position(|row_index| *row_index == self.tree_selected)
+        else {
+            self.tree_selected = visible_rows.first().copied().unwrap_or_default();
+            return;
+        };
+        let target = if delta.is_negative() {
+            position.saturating_sub(delta.unsigned_abs())
+        } else {
+            position.saturating_add(delta as usize)
+        }
+        .min(visible_rows.len().saturating_sub(1));
+        self.tree_selected = visible_rows[target];
+        if let Some(file_index) = self.selected_tree_file_index() {
+            self.selected = file_index;
+        }
+    }
+
+    fn toggle_selected_directory(&mut self) -> bool {
+        let Some(directory) = self
+            .tree_rows
+            .get(self.tree_selected)
+            .and_then(|row| row.directory.clone())
+        else {
+            return false;
+        };
+        if !self.collapsed_directories.remove(&directory) {
+            self.collapsed_directories.insert(directory);
+        }
+        true
+    }
+
+    fn move_tree_left(&mut self) {
+        let Some(row) = self.tree_rows.get(self.tree_selected) else {
+            return;
+        };
+        if let Some(directory) = row.directory.clone() {
+            if self.collapsed_directories.insert(directory) {
+                return;
+            }
+            if let Some(parent) = row.ancestors.last()
+                && let Some(parent_index) = self
+                    .tree_rows
+                    .iter()
+                    .position(|candidate| candidate.directory.as_ref() == Some(parent))
+            {
+                self.tree_selected = parent_index;
+            }
+        } else if let Some(parent) = row.ancestors.last()
+            && let Some(parent_index) = self
+                .tree_rows
+                .iter()
+                .position(|candidate| candidate.directory.as_ref() == Some(parent))
+        {
+            self.tree_selected = parent_index;
+        }
+    }
+
+    fn move_tree_right(&mut self) {
+        let Some(row) = self.tree_rows.get(self.tree_selected) else {
+            return;
+        };
+        let Some(directory) = row.directory.clone() else {
+            return;
+        };
+        if self.collapsed_directories.remove(&directory) {
+            return;
+        }
+        let visible_rows = self.visible_tree_row_indices();
+        if let Some(position) = visible_rows
+            .iter()
+            .position(|row_index| *row_index == self.tree_selected)
+            && let Some(next_row) = visible_rows.get(position + 1)
+            && self.tree_rows[*next_row].depth > row.depth
+        {
+            self.tree_selected = *next_row;
+            if let Some(file_index) = self.selected_tree_file_index() {
+                self.selected = file_index;
+            }
+        }
     }
 }
 
@@ -407,33 +610,98 @@ fn adaptive_preview_change(
 }
 
 fn changes_tree_rows(paths: &[PathBuf], cwd: &Path) -> Vec<ChangesTreeRow> {
-    let mut seen_directories = BTreeSet::new();
-    let mut rows = Vec::new();
+    let mut root = ChangesTreeNode::default();
     for (file_index, path) in paths.iter().enumerate() {
         let display_path = display_path_for(path, cwd);
         let parts = Path::new(&display_path)
             .components()
-            .filter_map(|component| component.as_os_str().to_str())
+            .map(|component| component.as_os_str().to_string_lossy().into_owned())
             .collect::<Vec<_>>();
-        for depth in 0..parts.len().saturating_sub(1) {
-            let directory = parts[..=depth].join("/");
-            if seen_directories.insert(directory) {
-                rows.push(ChangesTreeRow {
-                    file_index: None,
-                    depth,
-                    label: parts[depth].to_string(),
-                });
-            }
+        root.insert(&parts, file_index);
+    }
+    let mut rows = Vec::new();
+    flatten_changes_tree(&root, Path::new(""), 0, &[], &[], &mut rows);
+    rows
+}
+
+impl ChangesTreeNode {
+    fn insert(&mut self, parts: &[String], file_index: usize) {
+        let Some((name, remaining)) = parts.split_first() else {
+            return;
+        };
+        if remaining.is_empty() {
+            self.files.insert(name.clone(), file_index);
+        } else {
+            self.directories
+                .entry(name.clone())
+                .or_default()
+                .insert(remaining, file_index);
         }
-        if let Some(name) = parts.last() {
+    }
+}
+
+fn flatten_changes_tree(
+    node: &ChangesTreeNode,
+    path: &Path,
+    depth: usize,
+    ancestor_last: &[bool],
+    ancestors: &[PathBuf],
+    rows: &mut Vec<ChangesTreeRow>,
+) {
+    let mut entries = node
+        .directories
+        .keys()
+        .map(|name| (name.clone(), true))
+        .chain(node.files.keys().map(|name| (name.clone(), false)))
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    for (entry_index, (name, is_directory)) in entries.iter().enumerate() {
+        let is_last = entry_index + 1 == entries.len();
+        let entry_path = path.join(name);
+        if *is_directory {
             rows.push(ChangesTreeRow {
-                file_index: Some(file_index),
-                depth: parts.len().saturating_sub(1),
-                label: (*name).to_string(),
+                file_index: None,
+                directory: Some(entry_path.clone()),
+                depth,
+                label: name.clone(),
+                is_last,
+                ancestor_last: ancestor_last.to_vec(),
+                ancestors: ancestors.to_vec(),
+            });
+            let mut child_ancestor_last = ancestor_last.to_vec();
+            child_ancestor_last.push(is_last);
+            let mut child_ancestors = ancestors.to_vec();
+            child_ancestors.push(entry_path.clone());
+            flatten_changes_tree(
+                &node.directories[name],
+                &entry_path,
+                depth + 1,
+                &child_ancestor_last,
+                &child_ancestors,
+                rows,
+            );
+        } else {
+            rows.push(ChangesTreeRow {
+                file_index: Some(node.files[name]),
+                directory: None,
+                depth,
+                label: name.clone(),
+                is_last,
+                ancestor_last: ancestor_last.to_vec(),
+                ancestors: ancestors.to_vec(),
             });
         }
     }
-    rows
+}
+
+fn tree_row_connector(row: &ChangesTreeRow) -> String {
+    let mut connector = row
+        .ancestor_last
+        .iter()
+        .map(|is_last| if *is_last { "   " } else { "│  " })
+        .collect::<String>();
+    connector.push_str(if row.is_last { "└─ " } else { "├─ " });
+    connector
 }
 
 fn change_kind(change: &FileChange) -> &'static str {
@@ -2287,6 +2555,80 @@ mod tests {
         overlay.render_explorer(area, &mut flat);
 
         assert_snapshot!(format!("flat:\n{flat:?}\n\ntree:\n{tree:?}"));
+    }
+
+    #[test]
+    fn session_change_tree_renders_connectors_and_collapsed_folders() {
+        let changes = HashMap::from([
+            (
+                PathBuf::from("src/lib.rs"),
+                updated_session_change("old\n", "new\n"),
+            ),
+            (
+                PathBuf::from("src/nested/mod.rs"),
+                updated_session_change("old\n", "new\n"),
+            ),
+            (
+                PathBuf::from("tests/tree.rs"),
+                updated_session_change("old\n", "new\n"),
+            ),
+        ]);
+        let mut overlay = ChangesOverlay::new(
+            changes,
+            AbsolutePathBuf::try_from(PathBuf::from("/workspace")).unwrap(),
+            default_pager_keymap(),
+        );
+        let area = Rect::new(0, 0, 80, 14);
+        let mut expanded = Buffer::empty(area);
+        overlay.render_explorer(area, &mut expanded);
+
+        let src_index = overlay
+            .tree_rows
+            .iter()
+            .position(|row| row.directory == Some(PathBuf::from("src")))
+            .unwrap();
+        overlay.tree_selected = src_index;
+        overlay.move_tree_right();
+        assert_eq!(overlay.tree_rows[overlay.tree_selected].label, "lib.rs");
+        overlay.move_tree_left();
+        assert_eq!(overlay.tree_rows[overlay.tree_selected].label, "src");
+        overlay.move_tree_left();
+        assert!(
+            overlay
+                .collapsed_directories
+                .contains(&PathBuf::from("src"))
+        );
+        overlay.move_tree_right();
+        assert!(
+            !overlay
+                .collapsed_directories
+                .contains(&PathBuf::from("src"))
+        );
+        overlay.tree_selected = src_index;
+        assert!(overlay.toggle_selected_directory());
+        let mut collapsed = Buffer::empty(area);
+        overlay.render_explorer(area, &mut collapsed);
+
+        assert_snapshot!(format!(
+            "expanded:\n{expanded:?}\n\ncollapsed:\n{collapsed:?}"
+        ));
+
+        let selected_file = overlay
+            .paths
+            .iter()
+            .position(|path| path == Path::new("src/lib.rs"))
+            .unwrap();
+        overlay.selected = selected_file;
+        overlay.sync_tree_selection_to_selected_file();
+        assert_eq!(
+            overlay.tree_rows[overlay.tree_selected].file_index,
+            Some(selected_file)
+        );
+        assert!(
+            !overlay
+                .collapsed_directories
+                .contains(&PathBuf::from("src"))
+        );
     }
 
     #[test]

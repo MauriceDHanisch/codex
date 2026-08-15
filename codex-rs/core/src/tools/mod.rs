@@ -23,6 +23,7 @@ use std::borrow::Cow;
 
 use crate::session::turn_context::TurnContext;
 pub(crate) use approvals::ApprovalContext;
+pub(crate) use approvals::UserApprovalMode;
 use codex_features::Feature;
 use codex_protocol::exec_output::ExecToolCallOutput;
 use codex_protocol::openai_models::ModelInfo;

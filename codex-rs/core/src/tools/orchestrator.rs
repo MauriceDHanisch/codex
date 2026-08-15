@@ -10,6 +10,7 @@ use crate::config::NetworkProxySpec;
 use crate::guardian::GuardianReviewContext;
 use crate::network_policy_decision::network_approval_context_from_payload;
 use crate::tools::approvals::ApprovalContext;
+use crate::tools::approvals::UserApprovalMode;
 use crate::tools::flat_tool_name;
 use crate::tools::network_approval::ActiveNetworkApproval;
 use crate::tools::network_approval::DeferredNetworkApproval;
@@ -187,6 +188,7 @@ impl ToolOrchestrator {
                         approval_reason: None,
                         retry_reason: None,
                         network_approval_context: None,
+                        user_approval_mode: UserApprovalMode::Standard,
                     };
                     tool_ctx
                         .session
@@ -220,6 +222,7 @@ impl ToolOrchestrator {
                     approval_reason: reason.clone(),
                     retry_reason: None,
                     network_approval_context: None,
+                    user_approval_mode: UserApprovalMode::Standard,
                 };
                 tool_ctx
                     .session
@@ -429,6 +432,7 @@ impl ToolOrchestrator {
                         approval_reason,
                         retry_reason: Some(retry_reason),
                         network_approval_context: network_approval_context.clone(),
+                        user_approval_mode: UserApprovalMode::Standard,
                     };
 
                     tool_ctx

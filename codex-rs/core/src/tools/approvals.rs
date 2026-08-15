@@ -61,6 +61,19 @@ pub(crate) struct ApprovalContext {
     pub(crate) approval_reason: Option<String>,
     pub(crate) retry_reason: Option<String>,
     pub(crate) network_approval_context: Option<NetworkApprovalContext>,
+    pub(crate) user_approval_mode: UserApprovalMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UserApprovalMode {
+    Standard,
+    AutoReviewEscalation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GuardianReviewMode {
+    Interactive,
+    Strict,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -588,15 +601,38 @@ impl Session {
             )
         };
 
-        let decision = match reviewer {
-            ApprovalReviewer::Guardian => self.request_guardian_approval(action, ctx).await,
-            ApprovalReviewer::User => self.request_user_approval(&action, ctx).await,
-        };
-        let source = match reviewer {
-            ApprovalReviewer::Guardian => ApprovalResolutionSource::Guardian,
-            ApprovalReviewer::User => ApprovalResolutionSource::User,
-        };
-        ApprovalResolution { decision, source }
+        match reviewer {
+            ApprovalReviewer::Guardian => {
+                let guardian_decision = self.request_guardian_approval(action.clone(), ctx).await;
+                let review_mode = if ctx.strict_auto_review {
+                    GuardianReviewMode::Strict
+                } else {
+                    GuardianReviewMode::Interactive
+                };
+                if should_escalate_guardian_denial(&guardian_decision, review_mode) {
+                    let mut user_ctx = ctx.clone();
+                    user_ctx.user_approval_mode = UserApprovalMode::AutoReviewEscalation;
+                    if let ReviewDecision::Denied { rejection } = &guardian_decision {
+                        user_ctx.retry_reason =
+                            Some(format!("Automatic review denied this action: {rejection}"));
+                    }
+                    let decision = self.request_user_approval(&action, &user_ctx).await;
+                    ApprovalResolution {
+                        decision,
+                        source: ApprovalResolutionSource::User,
+                    }
+                } else {
+                    ApprovalResolution {
+                        decision: guardian_decision,
+                        source: ApprovalResolutionSource::Guardian,
+                    }
+                }
+            }
+            ApprovalReviewer::User => ApprovalResolution {
+                decision: self.request_user_approval(&action, ctx).await,
+                source: ApprovalResolutionSource::User,
+            },
+        }
     }
 
     pub(crate) async fn request_guardian_approval(
@@ -736,6 +772,12 @@ impl Session {
                     .map(|key| (key, &policy_fingerprint))
                     .collect();
                 with_cached_approval(&self.services, tool_name, cache_keys, || async {
+                    let available_decisions = match ctx.user_approval_mode {
+                        UserApprovalMode::Standard => None,
+                        UserApprovalMode::AutoReviewEscalation => {
+                            Some(vec![ReviewDecision::Approved, ReviewDecision::Abort])
+                        }
+                    };
                     self.request_command_approval(
                         ctx.review_context.turn(),
                         ExecApprovalKind::Command,
@@ -748,7 +790,7 @@ impl Session {
                         ctx.network_approval_context.clone(),
                         proposed_execpolicy_amendment.clone(),
                         additional_permissions.clone(),
-                        /*available_decisions*/ None,
+                        available_decisions,
                         /*plugin_attribution_override*/ None,
                     )
                     .await
@@ -890,6 +932,14 @@ impl Session {
             }
         }
     }
+}
+
+fn should_escalate_guardian_denial(
+    decision: &ReviewDecision,
+    review_mode: GuardianReviewMode,
+) -> bool {
+    review_mode == GuardianReviewMode::Interactive
+        && matches!(decision, ReviewDecision::Denied { .. })
 }
 
 fn record_resolution(ctx: &ApprovalContext, resolution: &ApprovalResolution) {

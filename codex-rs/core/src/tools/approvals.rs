@@ -2,13 +2,14 @@
 
 use crate::command_canonicalization::canonicalize_command_for_approval;
 use crate::exec_policy::prompt_is_rejected_by_policy;
+use crate::guardian::GuardianDenialHandling;
 use crate::guardian::GuardianNetworkAccessTrigger;
 use crate::guardian::GuardianReviewContext;
 use crate::guardian::GuardianReviewOptions;
 use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
-use crate::guardian::review_approval_request;
 use crate::guardian::review_approval_request_with_cancel;
+use crate::guardian::review_approval_request_with_rationale;
 use crate::guardian::routes_approval_policy_to_guardian;
 use crate::guardian::spawn_approval_request_review;
 use crate::hook_runtime::run_permission_request_hooks;
@@ -61,6 +62,19 @@ pub(crate) struct ApprovalContext {
     pub(crate) approval_reason: Option<String>,
     pub(crate) retry_reason: Option<String>,
     pub(crate) network_approval_context: Option<NetworkApprovalContext>,
+    pub(crate) user_approval_mode: UserApprovalMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UserApprovalMode {
+    Standard,
+    AutoReviewEscalation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GuardianReviewMode {
+    Interactive,
+    Strict,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -588,22 +602,62 @@ impl Session {
             )
         };
 
-        let decision = match reviewer {
-            ApprovalReviewer::Guardian => self.request_guardian_approval(action, ctx).await,
-            ApprovalReviewer::User => self.request_user_approval(&action, ctx).await,
-        };
-        let source = match reviewer {
-            ApprovalReviewer::Guardian => ApprovalResolutionSource::Guardian,
-            ApprovalReviewer::User => ApprovalResolutionSource::User,
-        };
-        ApprovalResolution { decision, source }
+        match reviewer {
+            ApprovalReviewer::Guardian => {
+                let denial_handling = if ctx.strict_auto_review {
+                    GuardianDenialHandling::RecordImmediately
+                } else {
+                    GuardianDenialHandling::DeferUntilUserDecision
+                };
+                let (guardian_decision, guardian_rationale) = self
+                    .request_guardian_approval(action.clone(), ctx, denial_handling)
+                    .await;
+                let review_mode = if ctx.strict_auto_review {
+                    GuardianReviewMode::Strict
+                } else {
+                    GuardianReviewMode::Interactive
+                };
+                if should_escalate_guardian_denial(&guardian_decision, review_mode) {
+                    let mut user_ctx = ctx.clone();
+                    user_ctx.user_approval_mode = UserApprovalMode::AutoReviewEscalation;
+                    if matches!(guardian_decision, ReviewDecision::Denied { .. }) {
+                        let rationale = guardian_rationale.as_deref().unwrap_or(
+                            "The automatic reviewer denied the action without a specific rationale.",
+                        );
+                        user_ctx.retry_reason =
+                            Some(format!("Automatic review denied this action: {rationale}"));
+                    }
+                    let decision = self.request_user_approval(&action, &user_ctx).await;
+                    crate::guardian::record_guardian_user_decision(
+                        self,
+                        ctx.review_context.turn(),
+                        &decision,
+                    )
+                    .await;
+                    ApprovalResolution {
+                        decision,
+                        source: ApprovalResolutionSource::User,
+                    }
+                } else {
+                    ApprovalResolution {
+                        decision: guardian_decision,
+                        source: ApprovalResolutionSource::Guardian,
+                    }
+                }
+            }
+            ApprovalReviewer::User => ApprovalResolution {
+                decision: self.request_user_approval(&action, ctx).await,
+                source: ApprovalResolutionSource::User,
+            },
+        }
     }
 
     pub(crate) async fn request_guardian_approval(
         self: &Arc<Self>,
         action: ApprovalAction,
         ctx: &ApprovalContext,
-    ) -> ReviewDecision {
+        denial_handling: GuardianDenialHandling,
+    ) -> (ReviewDecision, Option<String>) {
         // Guardian inherits only the current turn's ready environments. A retained
         // terminal handle may outlive its selection, but must not be reviewed in
         // a different environment that happens to have the same launch directory.
@@ -614,8 +668,11 @@ impl Session {
                 .turn_environments()
                 .any(|environment| environment.selection.environment_id == *environment_id)
         {
-            return ReviewDecision::denied(
-                "automatic approval review cannot access the terminal's environment; select it before retrying",
+            return (
+                ReviewDecision::denied(
+                    "automatic approval review cannot access the terminal's environment; select it before retrying",
+                ),
+                None,
             );
         }
         let is_network_approval = matches!(&action, ApprovalAction::NetworkAccess { .. });
@@ -624,8 +681,11 @@ impl Session {
             Ok(action) => action,
             Err(err) => {
                 tracing::error!(%err, "failed to build automatic approval action");
-                return ReviewDecision::denied(
-                    "automatic approval review could not prepare the action",
+                return (
+                    ReviewDecision::denied(
+                        "automatic approval review could not prepare the action",
+                    ),
+                    None,
                 );
             }
         };
@@ -645,11 +705,13 @@ impl Session {
                     approval_request_source: GuardianApprovalRequestSource::MainTurn,
                     external_cancel: Some(cancellation_token.clone()),
                     require_synchronous_review: false,
+                    denial_handling,
                 },
             );
-            review.await.unwrap_or_else(|_| {
+            let decision = review.await.unwrap_or_else(|_| {
                 ReviewDecision::denied("automatic approval review could not complete")
-            })
+            });
+            (decision, None)
         } else if is_network_approval {
             let review_cancel = CancellationToken::new();
             let review_cancel_guard = review_cancel.clone().drop_guard();
@@ -668,6 +730,7 @@ impl Session {
                         approval_request_source: GuardianApprovalRequestSource::MainTurn,
                         external_cancel: Some(review_cancel),
                         require_synchronous_review: false,
+                        denial_handling,
                     },
                 )
                 .await
@@ -677,9 +740,9 @@ impl Session {
                 ReviewDecision::denied("automatic approval review could not complete")
             });
             drop(review_cancel_guard.disarm());
-            decision
+            (decision, None)
         } else {
-            review_approval_request(
+            review_approval_request_with_rationale(
                 self,
                 ctx.review_context.clone(),
                 review_id,
@@ -688,6 +751,7 @@ impl Session {
                     approval: ctx.approval_reason.clone(),
                     retry: ctx.retry_reason.clone(),
                 },
+                denial_handling,
             )
             .await
         }
@@ -736,6 +800,12 @@ impl Session {
                     .map(|key| (key, &policy_fingerprint))
                     .collect();
                 with_cached_approval(&self.services, tool_name, cache_keys, || async {
+                    let available_decisions = match ctx.user_approval_mode {
+                        UserApprovalMode::Standard => None,
+                        UserApprovalMode::AutoReviewEscalation => {
+                            Some(vec![ReviewDecision::Approved, ReviewDecision::Abort])
+                        }
+                    };
                     self.request_command_approval(
                         ctx.review_context.turn(),
                         ExecApprovalKind::Command,
@@ -748,7 +818,7 @@ impl Session {
                         ctx.network_approval_context.clone(),
                         proposed_execpolicy_amendment.clone(),
                         additional_permissions.clone(),
-                        /*available_decisions*/ None,
+                        available_decisions,
                         /*plugin_attribution_override*/ None,
                     )
                     .await
@@ -890,6 +960,14 @@ impl Session {
             }
         }
     }
+}
+
+fn should_escalate_guardian_denial(
+    decision: &ReviewDecision,
+    review_mode: GuardianReviewMode,
+) -> bool {
+    review_mode == GuardianReviewMode::Interactive
+        && matches!(decision, ReviewDecision::Denied { .. })
 }
 
 fn record_resolution(ctx: &ApprovalContext, resolution: &ApprovalResolution) {

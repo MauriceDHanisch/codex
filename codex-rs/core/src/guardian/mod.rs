@@ -45,14 +45,18 @@ pub(crate) use approval_request::guardian_approval_request_to_json;
 pub(crate) use prompt::BUNDLED_GUARDIAN_POLICY;
 pub(crate) use prompt::BUNDLED_GUARDIAN_POLICY_TEMPLATE;
 pub(crate) use prompt::guardian_truncate_text;
+pub(crate) use review::GuardianDenialHandling;
 pub(crate) use review::GuardianReviewOptions;
 pub(crate) use review::guardian_timeout_message;
 pub(crate) use review::is_basic_session_source;
 pub(crate) use review::new_guardian_review_id;
 #[cfg(test)]
 pub(crate) use review::record_guardian_denial_for_test;
+pub(crate) use review::record_guardian_user_decision;
+#[cfg(test)]
 pub(crate) use review::review_approval_request;
 pub(crate) use review::review_approval_request_with_cancel;
+pub(crate) use review::review_approval_request_with_rationale;
 pub(crate) use review::routes_approval_policy_to_guardian;
 pub(crate) use review::routes_approval_to_guardian;
 pub(crate) use review::spawn_approval_request_review;

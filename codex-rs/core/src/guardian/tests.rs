@@ -211,6 +211,38 @@ fn guardian_rejection_circuit_breaker_resets_consecutive_denials_on_non_denial()
     );
 }
 
+#[tokio::test]
+async fn guardian_user_approval_clears_denial_history() {
+    let (session, turn, _) = crate::session::tests::make_session_and_context_with_rx().await;
+    let turn_id = turn.sub_id.clone();
+    let mut circuit_breaker = session
+        .services
+        .guardian_rejection_circuit_breaker
+        .lock()
+        .await;
+    assert_eq!(
+        circuit_breaker.record_denial(&turn_id, GuardianRejectionCircuitBreakerPolicy::Standard),
+        GuardianRejectionCircuitBreakerAction::Continue
+    );
+    assert_eq!(
+        circuit_breaker.record_denial(&turn_id, GuardianRejectionCircuitBreakerPolicy::Standard),
+        GuardianRejectionCircuitBreakerAction::Continue
+    );
+    drop(circuit_breaker);
+
+    record_guardian_user_decision(&session, &turn, &ReviewDecision::Approved).await;
+
+    let mut circuit_breaker = session
+        .services
+        .guardian_rejection_circuit_breaker
+        .lock()
+        .await;
+    assert_eq!(
+        circuit_breaker.record_denial(&turn_id, GuardianRejectionCircuitBreakerPolicy::Standard),
+        GuardianRejectionCircuitBreakerAction::Continue
+    );
+}
+
 #[test]
 fn auto_review_rejection_circuit_breaker_interrupts_after_ten_recent_denials() {
     let mut circuit_breaker = GuardianRejectionCircuitBreaker::default();
@@ -1618,6 +1650,7 @@ async fn cancelled_guardian_review_emits_terminal_abort_without_warning() {
             approval_request_source: GuardianApprovalRequestSource::MainTurn,
             external_cancel: Some(cancel_token),
             require_synchronous_review: false,
+            denial_handling: GuardianDenialHandling::RecordImmediately,
         },
     )
     .await;

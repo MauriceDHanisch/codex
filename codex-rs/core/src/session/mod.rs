@@ -2832,13 +2832,15 @@ impl Session {
                 approval_reason: None,
                 retry_reason: None,
                 network_approval_context: None,
+                user_approval_mode: crate::tools::UserApprovalMode::Standard,
             };
-            let decision = tokio::select! {
+            let (decision, _) = tokio::select! {
                 biased;
                 _ = cancellation_token.cancelled() => return None,
                 decision = self.request_guardian_approval(
                     action,
                     &approval_context,
+                    crate::guardian::GuardianDenialHandling::RecordImmediately,
                 ) => decision,
             };
             let response = match decision {

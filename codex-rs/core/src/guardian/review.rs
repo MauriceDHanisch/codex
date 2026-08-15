@@ -12,6 +12,8 @@ use codex_core_plugins::PluginCommandAttribution;
 use codex_extension_api::GuardianV2Enabled;
 use codex_extension_api::ThreadIdleCause;
 use codex_features::Feature;
+use codex_protocol::approvals::NetworkPolicyAmendment;
+use codex_protocol::approvals::NetworkPolicyRuleAction;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::openai_models::MODEL_SPECIALTY_CYBER;
 use codex_protocol::openai_models::ModelInfo;
@@ -254,6 +256,39 @@ async fn record_guardian_non_denial(session: &Arc<Session>, turn_id: &str) {
         .record_non_denial(turn_id);
 }
 
+pub(crate) async fn record_guardian_user_decision(
+    session: &Arc<Session>,
+    turn: &Arc<TurnContext>,
+    decision: &ReviewDecision,
+) {
+    if user_approval_resets_guardian_denial_circuit_breaker(decision) {
+        session
+            .services
+            .guardian_rejection_circuit_breaker
+            .lock()
+            .await
+            .clear_turn(&turn.sub_id);
+    } else {
+        record_guardian_denial(session, turn, &turn.sub_id).await;
+    }
+}
+
+fn user_approval_resets_guardian_denial_circuit_breaker(decision: &ReviewDecision) -> bool {
+    matches!(
+        decision,
+        ReviewDecision::Approved
+            | ReviewDecision::ApprovedExecpolicyAmendment { .. }
+            | ReviewDecision::ApprovedForSession
+            | ReviewDecision::ApprovedMcpPolicyAmendment
+            | ReviewDecision::NetworkPolicyAmendment {
+                network_policy_amendment: NetworkPolicyAmendment {
+                    action: NetworkPolicyRuleAction::Allow,
+                    ..
+                }
+            }
+    )
+}
+
 async fn record_guardian_denial(session: &Arc<Session>, turn: &Arc<TurnContext>, turn_id: &str) {
     let policy = if turn.model_info().model_specialty.as_deref() == Some(MODEL_SPECIALTY_CYBER) {
         GuardianRejectionCircuitBreakerPolicy::CyberModel
@@ -325,7 +360,7 @@ async fn run_guardian_review(
     request: GuardianApprovalRequest,
     reasons: ApprovalRequestReasons,
     options: GuardianReviewOptions,
-) -> ReviewDecision {
+) -> (ReviewDecision, Option<String>) {
     let turn = Arc::clone(context.turn());
     if context.environments().has_full_access(
         context.approval_policy,
@@ -402,7 +437,7 @@ async fn run_guardian_review(
             record_guardian_non_denial(&session, guardian_request_turn_id(&request, &turn.sub_id))
                 .await;
         }
-        return decision;
+        return (decision, None);
     }
 
     let GuardianReviewOptions {
@@ -410,6 +445,7 @@ async fn run_guardian_review(
         approval_request_source,
         external_cancel,
         require_synchronous_review: _,
+        denial_handling,
     } = options;
     let target_item_id = guardian_request_target_item_id(&request).map(str::to_string);
     let assessment_turn_id = guardian_request_turn_id(&request, &turn.sub_id).to_string();
@@ -491,7 +527,7 @@ async fn run_guardian_review(
             )
             .await;
         record_guardian_non_denial(&session, &assessment_turn_id).await;
-        return ReviewDecision::Abort;
+        return (ReviewDecision::Abort, None);
     }
 
     let schema = guardian_output_schema();
@@ -606,14 +642,14 @@ async fn run_guardian_review(
                             status: GuardianAssessmentStatus::TimedOut,
                             risk_level: None,
                             user_authorization: None,
-                            rationale: Some(rationale),
+                            rationale: Some(rationale.clone()),
                             decision_source: Some(GuardianAssessmentDecisionSource::Agent),
                             action: terminal_action,
                         }),
                     )
                     .await;
                 record_guardian_non_denial(&session, &assessment_turn_id).await;
-                return ReviewDecision::TimedOut;
+                return (ReviewDecision::TimedOut, Some(rationale));
             }
             GuardianReviewError::Cancelled => {
                 track_guardian_review(
@@ -650,7 +686,7 @@ async fn run_guardian_review(
                     )
                     .await;
                 record_guardian_non_denial(&session, &assessment_turn_id).await;
-                return ReviewDecision::Abort;
+                return (ReviewDecision::Abort, None);
             }
             GuardianReviewError::PromptBuild { .. }
             | GuardianReviewError::Session { .. }
@@ -751,13 +787,15 @@ async fn run_guardian_review(
         .await;
 
     if count_denial_for_circuit_breaker {
-        record_guardian_denial(&session, &turn, &assessment_turn_id).await;
+        if denial_handling == GuardianDenialHandling::RecordImmediately {
+            record_guardian_denial(&session, &turn, &assessment_turn_id).await;
+        }
     } else {
         record_guardian_non_denial(&session, &assessment_turn_id).await;
     }
 
     if approved {
-        ReviewDecision::Approved
+        (ReviewDecision::Approved, None)
     } else {
         let rationale = if assessment.rationale.trim().is_empty() {
             "Auto-reviewer denied the action without a specific rationale."
@@ -771,9 +809,12 @@ async fn run_guardian_review(
             .and_then(|messages| messages.auto_review.as_ref())
             .and_then(|messages| messages.rejection_instructions.as_deref())
             .unwrap_or(GUARDIAN_REJECTION_INSTRUCTIONS);
-        ReviewDecision::denied(format!(
-            "This action was rejected due to unacceptable risk.\nReason: {rationale}\n{rejection_instructions}"
-        ))
+        (
+            ReviewDecision::denied(format!(
+                "This action was rejected due to unacceptable risk.\nReason: {rationale}\n{rejection_instructions}"
+            )),
+            Some(rationale.to_string()),
+        )
     }
 }
 
@@ -783,6 +824,13 @@ pub(crate) struct GuardianReviewOptions {
     pub(crate) external_cancel: Option<CancellationToken>,
     /// Escalate from extension fast approval to the synchronous Guardian reviewer.
     pub(crate) require_synchronous_review: bool,
+    pub(crate) denial_handling: GuardianDenialHandling,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GuardianDenialHandling {
+    RecordImmediately,
+    DeferUntilUserDecision,
 }
 
 /// Public entrypoint for approval requests that should be reviewed by guardian.
@@ -793,8 +841,9 @@ pub(crate) async fn review_approval_request(
     request: GuardianApprovalRequest,
     reasons: ApprovalRequestReasons,
 ) -> ReviewDecision {
-    // Erase the delegated future to bound its async state and the tool handlers' Send checks.
-    let review: BoxFuture<'_, ReviewDecision> = Box::pin(run_guardian_review(
+    // Box the delegated review future so callers do not inline the entire
+    // guardian session state machine into their own async stack.
+    let review: BoxFuture<'_, (ReviewDecision, Option<String>)> = Box::pin(run_guardian_review(
         Arc::clone(session),
         context.into(),
         review_id,
@@ -805,6 +854,33 @@ pub(crate) async fn review_approval_request(
             approval_request_source: GuardianApprovalRequestSource::MainTurn,
             external_cancel: None,
             require_synchronous_review: false,
+            denial_handling: GuardianDenialHandling::RecordImmediately,
+        },
+    ));
+    let (decision, _) = review.await;
+    decision
+}
+
+pub(crate) async fn review_approval_request_with_rationale(
+    session: &Arc<Session>,
+    context: impl Into<GuardianReviewContext>,
+    review_id: String,
+    request: GuardianApprovalRequest,
+    reasons: ApprovalRequestReasons,
+    denial_handling: GuardianDenialHandling,
+) -> (ReviewDecision, Option<String>) {
+    let review: BoxFuture<'_, (ReviewDecision, Option<String>)> = Box::pin(run_guardian_review(
+        Arc::clone(session),
+        context.into(),
+        review_id,
+        request,
+        reasons,
+        GuardianReviewOptions {
+            plugin_attribution_override: None,
+            approval_request_source: GuardianApprovalRequestSource::MainTurn,
+            external_cancel: None,
+            require_synchronous_review: false,
+            denial_handling,
         },
     ));
     review.await
@@ -818,7 +894,7 @@ pub(crate) async fn review_approval_request_with_cancel(
     retry_reason: Option<String>,
     options: GuardianReviewOptions,
 ) -> ReviewDecision {
-    run_guardian_review(
+    let review: BoxFuture<'_, (ReviewDecision, Option<String>)> = Box::pin(run_guardian_review(
         Arc::clone(session),
         context.into(),
         review_id,
@@ -828,8 +904,9 @@ pub(crate) async fn review_approval_request_with_cancel(
             retry: retry_reason,
         },
         options,
-    )
-    .await
+    ));
+    let (decision, _) = review.await;
+    decision
 }
 
 pub(crate) fn spawn_approval_request_review(
@@ -847,7 +924,7 @@ pub(crate) fn spawn_approval_request_review(
         .name("codex-approval-review".to_string())
         .stack_size(THREAD_STACK_SIZE_BYTES)
         .spawn(move || {
-            let decision = runtime.block_on(run_guardian_review(
+            let (decision, _) = runtime.block_on(run_guardian_review(
                 session, context, review_id, request, reasons, options,
             ));
             let _ = tx.send(decision);

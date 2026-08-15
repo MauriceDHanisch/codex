@@ -7,6 +7,8 @@ expression: "render_overlay_lines(&view, 80)"
 
   Thread: Robie [explorer]
 
+  ────────────────────────
+
   $ echo hi
 
 › 1. Yes, proceed (y)

@@ -6,6 +6,8 @@ use crate::sandboxing::ExecRequest;
 use crate::sandboxing::SandboxPermissions;
 use crate::tools::approvals::ApprovalAction;
 use crate::tools::approvals::ApprovalContext;
+use crate::tools::approvals::UserApprovalMode;
+use crate::tools::runtimes::build_sandbox_command;
 use crate::tools::runtimes::exec_env_for_sandbox_permissions;
 use crate::tools::sandboxing::SandboxAttempt;
 use crate::tools::sandboxing::ToolCtx;
@@ -303,6 +305,7 @@ impl CoreShellActionProvider {
                     approval_reason: None,
                     retry_reason: None,
                     network_approval_context: None,
+                    user_approval_mode: UserApprovalMode::Standard,
                 };
                 self.session.request_approval(action, approval_ctx).await
             })

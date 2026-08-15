@@ -16,6 +16,7 @@ use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
 use crate::tools::ApprovalContext;
+use crate::tools::UserApprovalMode;
 use crate::tools::hook_names::HookToolName;
 use crate::tools::sandboxing::ApprovalAction;
 use crate::tools::sandboxing::ToolError;
@@ -1368,6 +1369,7 @@ async fn maybe_request_mcp_tool_approval(
         approval_reason: None,
         retry_reason: None,
         network_approval_context: None,
+        user_approval_mode: UserApprovalMode::Standard,
     };
     Some(
         match sess.request_approval(action, approval_context).await {

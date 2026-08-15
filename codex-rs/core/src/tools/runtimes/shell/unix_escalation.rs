@@ -10,6 +10,7 @@ use crate::sandboxing::SandboxPermissions;
 use crate::shell::ShellType;
 use crate::tools::approvals::ApprovalAction;
 use crate::tools::approvals::ApprovalContext;
+use crate::tools::approvals::UserApprovalMode;
 use crate::tools::runtimes::build_sandbox_command;
 use crate::tools::runtimes::exec_env_for_sandbox_permissions;
 use crate::tools::runtimes::prepend_zsh_fork_bin_to_path;
@@ -472,6 +473,7 @@ impl CoreShellActionProvider {
                     approval_reason: None,
                     retry_reason: None,
                     network_approval_context: None,
+                    user_approval_mode: UserApprovalMode::Standard,
                 };
                 self.session.request_approval(action, approval_ctx).await
             })

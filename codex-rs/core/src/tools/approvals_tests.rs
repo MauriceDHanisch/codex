@@ -51,6 +51,24 @@ fn approval_resolution_aborts_turn_when_approval_is_aborted() {
 }
 
 #[test]
+fn guardian_denials_escalate_only_for_interactive_auto_review() {
+    let denied = ReviewDecision::denied("the action is high risk");
+
+    assert!(should_escalate_guardian_denial(
+        &denied,
+        GuardianReviewMode::Interactive
+    ));
+    assert!(!should_escalate_guardian_denial(
+        &denied,
+        GuardianReviewMode::Strict
+    ));
+    assert!(!should_escalate_guardian_denial(
+        &ReviewDecision::Approved,
+        GuardianReviewMode::Interactive
+    ));
+}
+
+#[test]
 fn guardian_cwd_preserves_drive_shaped_local_posix_path() {
     let native_cwd = AbsolutePathBuf::try_from(std::path::PathBuf::from("/C:/workspace"))
         .expect("drive-shaped POSIX path should be absolute");

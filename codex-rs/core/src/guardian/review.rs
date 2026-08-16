@@ -309,7 +309,7 @@ async fn run_guardian_review(
     request: GuardianApprovalRequest,
     reasons: ApprovalRequestReasons,
     options: GuardianReviewOptions,
-) -> ReviewDecision {
+) -> (ReviewDecision, Option<String>) {
     let turn = Arc::clone(context.turn());
     let GuardianReviewOptions {
         plugin_attribution_override,
@@ -396,7 +396,7 @@ async fn run_guardian_review(
             )
             .await;
         record_guardian_non_denial(&session, &assessment_turn_id).await;
-        return ReviewDecision::Abort;
+        return (ReviewDecision::Abort, None);
     }
 
     let schema = guardian_output_schema();
@@ -484,14 +484,14 @@ async fn run_guardian_review(
                             status: GuardianAssessmentStatus::TimedOut,
                             risk_level: None,
                             user_authorization: None,
-                            rationale: Some(rationale),
+                            rationale: Some(rationale.clone()),
                             decision_source: Some(GuardianAssessmentDecisionSource::Agent),
                             action: terminal_action,
                         }),
                     )
                     .await;
                 record_guardian_non_denial(&session, &assessment_turn_id).await;
-                return ReviewDecision::TimedOut;
+                return (ReviewDecision::TimedOut, Some(rationale));
             }
             GuardianReviewError::Cancelled => {
                 track_guardian_review(
@@ -528,7 +528,7 @@ async fn run_guardian_review(
                     )
                     .await;
                 record_guardian_non_denial(&session, &assessment_turn_id).await;
-                return ReviewDecision::Abort;
+                return (ReviewDecision::Abort, None);
             }
             GuardianReviewError::PromptBuild { .. }
             | GuardianReviewError::Session { .. }
@@ -623,16 +623,19 @@ async fn run_guardian_review(
     }
 
     if approved {
-        ReviewDecision::Approved
+        (ReviewDecision::Approved, None)
     } else {
         let rationale = if assessment.rationale.trim().is_empty() {
             "Auto-reviewer denied the action without a specific rationale."
         } else {
             assessment.rationale.trim()
         };
-        ReviewDecision::denied(format!(
-            "This action was rejected due to unacceptable risk.\nReason: {rationale}\n{GUARDIAN_REJECTION_INSTRUCTIONS}"
-        ))
+        (
+            ReviewDecision::denied(format!(
+                "This action was rejected due to unacceptable risk.\nReason: {rationale}\n{GUARDIAN_REJECTION_INSTRUCTIONS}"
+            )),
+            Some(rationale.to_string()),
+        )
     }
 }
 
@@ -652,6 +655,29 @@ pub(crate) async fn review_approval_request(
 ) -> ReviewDecision {
     // Box the delegated review future so callers do not inline the entire
     // guardian session state machine into their own async stack.
+    let (decision, _) = Box::pin(run_guardian_review(
+        Arc::clone(session),
+        context.into(),
+        review_id,
+        request,
+        reasons,
+        GuardianReviewOptions {
+            plugin_attribution_override: None,
+            approval_request_source: GuardianApprovalRequestSource::MainTurn,
+            external_cancel: None,
+        },
+    ))
+    .await;
+    decision
+}
+
+pub(crate) async fn review_approval_request_with_rationale(
+    session: &Arc<Session>,
+    context: impl Into<GuardianReviewContext>,
+    review_id: String,
+    request: GuardianApprovalRequest,
+    reasons: ApprovalRequestReasons,
+) -> (ReviewDecision, Option<String>) {
     Box::pin(run_guardian_review(
         Arc::clone(session),
         context.into(),
@@ -675,7 +701,7 @@ pub(crate) async fn review_approval_request_with_cancel(
     retry_reason: Option<String>,
     options: GuardianReviewOptions,
 ) -> ReviewDecision {
-    run_guardian_review(
+    let (decision, _) = run_guardian_review(
         Arc::clone(session),
         context.into(),
         review_id,
@@ -686,7 +712,8 @@ pub(crate) async fn review_approval_request_with_cancel(
         },
         options,
     )
-    .await
+    .await;
+    decision
 }
 
 pub(crate) fn spawn_approval_request_review(

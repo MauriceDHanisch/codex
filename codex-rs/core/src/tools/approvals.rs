@@ -4,7 +4,7 @@ use crate::command_canonicalization::canonicalize_command_for_approval;
 use crate::guardian::GuardianReviewContext;
 use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
-use crate::guardian::review_approval_request;
+use crate::guardian::review_approval_request_with_rationale;
 use crate::guardian::routes_approval_policy_to_guardian;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::mcp_tool_call::request_mcp_tool_user_approval;
@@ -476,7 +476,8 @@ impl Session {
 
         match reviewer {
             ApprovalReviewer::Guardian => {
-                let guardian_decision = self.request_guardian_approval(action.clone(), ctx).await;
+                let (guardian_decision, guardian_rationale) =
+                    self.request_guardian_approval(action.clone(), ctx).await;
                 let review_mode = if ctx.strict_auto_review {
                     GuardianReviewMode::Strict
                 } else {
@@ -485,9 +486,12 @@ impl Session {
                 if should_escalate_guardian_denial(&guardian_decision, review_mode) {
                     let mut user_ctx = ctx.clone();
                     user_ctx.user_approval_mode = UserApprovalMode::AutoReviewEscalation;
-                    if let ReviewDecision::Denied { rejection } = &guardian_decision {
+                    if matches!(guardian_decision, ReviewDecision::Denied { .. }) {
+                        let rationale = guardian_rationale.as_deref().unwrap_or(
+                            "The automatic reviewer denied the action without a specific rationale.",
+                        );
                         user_ctx.retry_reason =
-                            Some(format!("Automatic review denied this action: {rejection}"));
+                            Some(format!("Automatic review denied this action: {rationale}"));
                     }
                     let decision = self.request_user_approval(&action, &user_ctx).await;
                     ApprovalResolution {
@@ -512,19 +516,22 @@ impl Session {
         self: &Arc<Self>,
         action: ApprovalAction,
         ctx: &ApprovalContext,
-    ) -> ReviewDecision {
+    ) -> (ReviewDecision, Option<String>) {
         let review_id = new_guardian_review_id();
         let action = match action.into_guardian_request() {
             Ok(action) => action,
             Err(err) => {
                 tracing::error!(%err, "failed to build automatic approval action");
-                return ReviewDecision::denied(
-                    "automatic approval review could not prepare the action",
+                return (
+                    ReviewDecision::denied(
+                        "automatic approval review could not prepare the action",
+                    ),
+                    None,
                 );
             }
         };
 
-        review_approval_request(
+        review_approval_request_with_rationale(
             self,
             ctx.review_context.clone(),
             review_id,

@@ -121,6 +121,8 @@ pub(crate) struct McpElicitationApprovalRequest {
     pub message: String,
 }
 
+const APPROVAL_SECTION_DIVIDER: &str = "────────────────────────";
+
 impl ApprovalRequest {
     pub(super) fn thread_id(&self) -> ThreadId {
         match self {
@@ -687,6 +689,20 @@ fn network_approval_command_target(command: &[String]) -> Option<&str> {
     }
 }
 
+pub(crate) fn approval_reason_lines(reason: &str) -> Vec<Line<'static>> {
+    reason
+        .split('\n')
+        .enumerate()
+        .map(|(index, line)| {
+            let prefix = if index == 0 { "Reason: " } else { "" };
+            Line::from(vec![
+                prefix.into(),
+                line.trim_end_matches('\r').to_string().italic(),
+            ])
+        })
+        .collect()
+}
+
 fn build_header(request: &ApprovalRequest) -> Box<dyn Renderable> {
     match request {
         ApprovalRequest::Exec(request) => {
@@ -706,7 +722,7 @@ fn build_header(request: &ApprovalRequest) -> Box<dyn Renderable> {
                 header.push(Line::from(""));
             }
             if let Some(reason) = &request.reason {
-                header.push(Line::from(vec!["Reason: ".into(), reason.clone().italic()]));
+                header.extend(approval_reason_lines(reason));
                 header.push(Line::from(""));
             }
             if let Some(additional_permissions) = &request.additional_permissions
@@ -728,6 +744,10 @@ fn build_header(request: &ApprovalRequest) -> Box<dyn Renderable> {
                     first.spans.insert(0, Span::from("$ "));
                 }
                 if request.network_approval_context.is_none() {
+                    if !header.is_empty() {
+                        header.push(Line::from(vec![APPROVAL_SECTION_DIVIDER.dark_gray()]));
+                        header.push(Line::from(""));
+                    }
                     header.extend(full_cmd_lines);
                 }
             }
@@ -750,7 +770,7 @@ fn build_header(request: &ApprovalRequest) -> Box<dyn Renderable> {
                 header.push(Line::from(""));
             }
             if let Some(reason) = &request.reason {
-                header.push(Line::from(vec!["Reason: ".into(), reason.clone().italic()]));
+                header.extend(approval_reason_lines(reason));
                 header.push(Line::from(""));
             }
             if let Some(rule_line) = format_requested_permissions_rule(&request.permissions) {
@@ -1766,6 +1786,51 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("echo hello world")),
             "expected header to include command snippet, got {rendered:?}"
+        );
+    }
+
+    #[test]
+    fn multiline_reason_preserves_line_breaks() {
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx);
+        let reason = "Automatic review denied this action: The user explicitly requested pushing the checked-out branch, but local Git policy denies pushes without /approve.";
+        let request = ApprovalRequest::Exec(ExecApprovalRequest {
+            thread_id: ThreadId::new(),
+            thread_label: None,
+            id: "test".into(),
+            environment_id: Some("local".into()),
+            command: vec!["git".into(), "push".into()],
+            reason: Some(reason.into()),
+            available_decisions: vec![
+                CommandExecutionApprovalDecision::Accept,
+                CommandExecutionApprovalDecision::Cancel,
+            ],
+            network_approval_context: None,
+            additional_permissions: None,
+        });
+
+        let view = make_overlay(request, tx, Features::with_defaults());
+        let rendered = render_overlay_lines(&view, 120);
+
+        assert_eq!(approval_reason_lines(reason).len(), 1);
+        assert!(
+            rendered.contains("Reason: Automatic review denied this action: The user explicitly")
+        );
+        assert!(
+            rendered.contains("Git policy denies pushes without /approve."),
+            "rendered approval overlay:\n{rendered}"
+        );
+        assert!(
+            rendered.contains(APPROVAL_SECTION_DIVIDER),
+            "rendered approval overlay:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("unacceptable risk"),
+            "rendered approval overlay:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("must not attempt to achieve the same outcome"),
+            "rendered approval overlay:\n{rendered}"
         );
     }
 

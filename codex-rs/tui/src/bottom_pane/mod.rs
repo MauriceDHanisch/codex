@@ -82,6 +82,7 @@ pub(crate) use approval_overlay::ApprovalRequest;
 pub(crate) use approval_overlay::ExecApprovalRequest;
 pub(crate) use approval_overlay::McpElicitationApprovalRequest;
 pub(crate) use approval_overlay::PermissionsApprovalRequest;
+pub(crate) use approval_overlay::approval_reason_lines;
 pub(crate) use approval_overlay::format_requested_permissions_rule;
 pub(crate) use mcp_server_elicitation::McpServerElicitationFormRequest;
 pub(crate) use mcp_server_elicitation::McpServerElicitationOverlay;

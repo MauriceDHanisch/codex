@@ -2788,7 +2788,7 @@ impl App {
                         lines.push(Line::from(""));
                     }
                     if let Some(reason) = request.reason {
-                        lines.push(Line::from(vec!["Reason: ".into(), reason.italic()]));
+                        lines.extend(crate::bottom_pane::approval_reason_lines(&reason));
                         lines.push(Line::from(""));
                     }
                     if let Some(rule_line) =

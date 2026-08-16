@@ -1,5 +1,7 @@
 use std::sync::OnceLock;
 
+const TOKIO_WORKER_THREADS_ENV_VAR: &str = "TOKIO_WORKER_THREADS";
+
 /// Controls whether V8 may generate executable code at runtime.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum V8JitMode {
@@ -46,13 +48,34 @@ fn initialize_v8_with_mode(jit_mode: V8JitMode) -> Result<V8Initialization, Stri
         V8JitMode::Enabled => {}
         V8JitMode::Disabled => v8::V8::set_flags_from_string("--jitless"),
     }
-    let platform = v8::new_default_platform(0, false).make_shared();
+    // Keep the V8 worker pool aligned with the main Codex runtime when a
+    // process-wide worker limit is configured.
+    let platform = v8::new_default_platform(
+        v8_thread_pool_size_from_env(std::env::var(TOKIO_WORKER_THREADS_ENV_VAR).ok().as_deref())?,
+        false,
+    )
+    .make_shared();
     v8::V8::initialize_platform(platform.clone());
     v8::V8::initialize();
     Ok(V8Initialization {
         _platform: platform,
         jit_mode,
     })
+}
+
+fn v8_thread_pool_size_from_env(value: Option<&str>) -> Result<u32, String> {
+    let Some(value) = value else {
+        return Ok(0);
+    };
+    let thread_count = value
+        .parse::<u32>()
+        .map_err(|_| format!("{TOKIO_WORKER_THREADS_ENV_VAR} must be a positive integer"))?;
+    if thread_count == 0 {
+        return Err(format!(
+            "{TOKIO_WORKER_THREADS_ENV_VAR} must be a positive integer"
+        ));
+    }
+    Ok(thread_count)
 }
 
 impl V8JitMode {
@@ -63,3 +86,7 @@ impl V8JitMode {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "v8_init_tests.rs"]
+mod tests;

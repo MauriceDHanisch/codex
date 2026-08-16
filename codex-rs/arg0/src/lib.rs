@@ -4,6 +4,7 @@ use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
 
+use anyhow::Context;
 use codex_apply_patch::CODEX_CORE_APPLY_PATCH_ARG1;
 #[cfg(unix)]
 use codex_exec_server::CODEX_ARG0_EXEC_HELPER_ARG1;
@@ -22,6 +23,8 @@ const MISSPELLED_APPLY_PATCH_ARG0: &str = "applypatch";
 #[cfg(unix)]
 const EXECVE_WRAPPER_ARG0: &str = "codex-execve-wrapper";
 const LOCK_FILENAME: &str = ".lock";
+const TOKIO_WORKER_THREADS_ENV_VAR: &str = "TOKIO_WORKER_THREADS";
+const TOKIO_MAX_BLOCKING_THREADS_ENV_VAR: &str = "TOKIO_MAX_BLOCKING_THREADS";
 const TOKIO_WORKER_STACK_SIZE_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -211,6 +214,10 @@ fn prepare_path_env_var_with_aliases(
 ///     contains the helper executable paths needed to construct
 ///     [`codex_core::config::Config`].
 ///
+/// `TOKIO_WORKER_THREADS` can be used to bound the Tokio worker pool. When it
+/// is set, the same value also bounds Tokio's blocking pool unless
+/// `TOKIO_MAX_BLOCKING_THREADS` is set explicitly.
+///
 /// This function should be used to wrap any `main()` function in binary crates
 /// in this workspace that depends on these helper CLIs.
 pub fn arg0_dispatch_or_else<F, Fut>(main_fn: F) -> anyhow::Result<()>
@@ -285,10 +292,48 @@ fn linux_sandbox_exe_path(
 }
 
 fn build_runtime() -> anyhow::Result<tokio::runtime::Runtime> {
+    let worker_threads = runtime_thread_count_from_env(
+        std::env::var(TOKIO_WORKER_THREADS_ENV_VAR).ok().as_deref(),
+        TOKIO_WORKER_THREADS_ENV_VAR,
+    )?;
+    let max_blocking_threads = runtime_thread_count_from_env(
+        std::env::var(TOKIO_MAX_BLOCKING_THREADS_ENV_VAR)
+            .ok()
+            .as_deref(),
+        TOKIO_MAX_BLOCKING_THREADS_ENV_VAR,
+    )?
+    .or(worker_threads);
+    build_runtime_with_thread_counts(worker_threads, max_blocking_threads)
+}
+
+fn build_runtime_with_thread_counts(
+    worker_threads: Option<usize>,
+    max_blocking_threads: Option<usize>,
+) -> anyhow::Result<tokio::runtime::Runtime> {
     let mut builder = tokio::runtime::Builder::new_multi_thread();
     builder.enable_all();
     builder.thread_stack_size(TOKIO_WORKER_STACK_SIZE_BYTES);
+    if let Some(worker_threads) = worker_threads {
+        builder.worker_threads(worker_threads);
+    }
+    if let Some(max_blocking_threads) = max_blocking_threads {
+        builder.max_blocking_threads(max_blocking_threads);
+    }
     Ok(builder.build()?)
+}
+
+fn runtime_thread_count_from_env(
+    value: Option<&str>,
+    variable: &str,
+) -> anyhow::Result<Option<usize>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let thread_count = value
+        .parse::<usize>()
+        .with_context(|| format!("{variable} must be a positive integer"))?;
+    anyhow::ensure!(thread_count > 0, "{variable} must be a positive integer");
+    Ok(Some(thread_count))
 }
 
 const ILLEGAL_ENV_VAR_PREFIX: &str = "CODEX_";
@@ -528,6 +573,7 @@ mod tests {
     use super::linux_sandbox_exe_path;
     #[cfg(unix)]
     use super::run_main_with_arg0_guard;
+    use super::runtime_thread_count_from_env;
     #[cfg(unix)]
     use anyhow::ensure;
     use codex_install_context::CodexPackageLayout;
@@ -540,6 +586,30 @@ mod tests {
     use std::path::Path;
     use std::path::PathBuf;
     use tempfile::TempDir;
+
+    #[test]
+    fn runtime_thread_count_from_env_requires_a_positive_integer() {
+        assert_eq!(
+            runtime_thread_count_from_env(None, "TOKIO_WORKER_THREADS")
+                .expect("unset value should use the runtime default"),
+            None,
+        );
+        assert_eq!(
+            runtime_thread_count_from_env(Some("8"), "TOKIO_WORKER_THREADS")
+                .expect("positive integer should parse"),
+            Some(8),
+        );
+        assert!(runtime_thread_count_from_env(Some("0"), "TOKIO_WORKER_THREADS").is_err());
+        assert!(runtime_thread_count_from_env(Some("many"), "TOKIO_WORKER_THREADS").is_err());
+    }
+
+    #[test]
+    fn build_runtime_honors_worker_thread_count() -> anyhow::Result<()> {
+        let runtime = super::build_runtime_with_thread_counts(Some(3), Some(2))?;
+
+        assert_eq!(runtime.metrics().num_workers(), 3);
+        Ok(())
+    }
 
     struct PackagePathTestFixture {
         _temp_dir: TempDir,

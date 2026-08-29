@@ -871,6 +871,7 @@ impl UnifiedExecProcessManager {
                 approval_reason: Some(approval_reason),
                 retry_reason: None,
                 network_approval_context: None,
+                user_approval_mode: crate::tools::UserApprovalMode::Standard,
             };
             context
                 .session

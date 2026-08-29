@@ -8,6 +8,8 @@ expression: terminal.backend().vt100().screen().contents()
 
   Reason: this is a test reason such as one that would be produced by the model
 
+  ────────────────────────
+
   $ echo hello world
 
 › 1. Yes, proceed (y)

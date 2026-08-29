@@ -1795,6 +1795,7 @@ mod tests {
         let tx = AppEventSender::new(tx);
         let reason = "Automatic review denied this action: The user explicitly requested pushing the checked-out branch, but local Git policy denies pushes without /approve.";
         let request = ApprovalRequest::Exec(ExecApprovalRequest {
+            kind: Default::default(),
             thread_id: ThreadId::new(),
             thread_label: None,
             id: "test".into(),

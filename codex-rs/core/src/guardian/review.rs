@@ -25,6 +25,7 @@ use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::WarningEvent;
+use futures::future::BoxFuture;
 use std::sync::Arc;
 use tokio::sync::oneshot;
 use tokio::time::Instant;
@@ -758,7 +759,7 @@ pub(crate) async fn review_approval_request(
 ) -> ReviewDecision {
     // Box the delegated review future so callers do not inline the entire
     // guardian session state machine into their own async stack.
-    let (decision, _) = Box::pin(run_guardian_review(
+    let review: BoxFuture<'_, (ReviewDecision, Option<String>)> = Box::pin(run_guardian_review(
         Arc::clone(session),
         context.into(),
         review_id,
@@ -770,8 +771,8 @@ pub(crate) async fn review_approval_request(
             external_cancel: None,
             require_synchronous_review: false,
         },
-    ))
-    .await;
+    ));
+    let (decision, _) = review.await;
     decision
 }
 
@@ -782,7 +783,7 @@ pub(crate) async fn review_approval_request_with_rationale(
     request: GuardianApprovalRequest,
     reasons: ApprovalRequestReasons,
 ) -> (ReviewDecision, Option<String>) {
-    Box::pin(run_guardian_review(
+    let review: BoxFuture<'_, (ReviewDecision, Option<String>)> = Box::pin(run_guardian_review(
         Arc::clone(session),
         context.into(),
         review_id,
@@ -794,8 +795,8 @@ pub(crate) async fn review_approval_request_with_rationale(
             external_cancel: None,
             require_synchronous_review: false,
         },
-    ))
-    .await
+    ));
+    review.await
 }
 
 pub(crate) async fn review_approval_request_with_cancel(
@@ -806,7 +807,7 @@ pub(crate) async fn review_approval_request_with_cancel(
     retry_reason: Option<String>,
     options: GuardianReviewOptions,
 ) -> ReviewDecision {
-    let (decision, _) = run_guardian_review(
+    let review: BoxFuture<'_, (ReviewDecision, Option<String>)> = Box::pin(run_guardian_review(
         Arc::clone(session),
         context.into(),
         review_id,
@@ -816,8 +817,8 @@ pub(crate) async fn review_approval_request_with_cancel(
             retry: retry_reason,
         },
         options,
-    )
-    .await;
+    ));
+    let (decision, _) = review.await;
     decision
 }
 

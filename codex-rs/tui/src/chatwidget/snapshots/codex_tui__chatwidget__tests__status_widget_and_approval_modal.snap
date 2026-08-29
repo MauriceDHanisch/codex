@@ -8,6 +8,8 @@ expression: normalized_backend_snapshot(terminal.backend())
 "                                                                                                    "
 "  Reason: this is a test reason such as one that would be produced by the model                     "
 "                                                                                                    "
+"  ────────────────────────                                                                          "
+"                                                                                                    "
 "  $ echo 'hello world'                                                                              "
 "                                                                                                    "
 "› 1. Yes, proceed (y)                                                                               "

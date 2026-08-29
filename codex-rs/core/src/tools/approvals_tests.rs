@@ -147,6 +147,7 @@ async fn explicit_mcp_reviewer_override_takes_precedence_over_action_context() {
         approval_reason: None,
         retry_reason: None,
         network_approval_context: None,
+        user_approval_mode: UserApprovalMode::Standard,
     };
 
     tokio::select! {

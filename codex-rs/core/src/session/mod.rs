@@ -2715,6 +2715,7 @@ impl Session {
                 decision = self.request_guardian_approval(
                     action,
                     &approval_context,
+                    crate::guardian::GuardianDenialHandling::RecordImmediately,
                 ) => decision,
             };
             let response = match decision {

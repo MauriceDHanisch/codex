@@ -819,6 +819,7 @@ async fn review_guardian_mcp_elicitation(
                 approval_request_source: codex_analytics::GuardianApprovalRequestSource::MainTurn,
                 external_cancel: Some(cancellation_token),
                 require_synchronous_review,
+                denial_handling: crate::guardian::GuardianDenialHandling::RecordImmediately,
             },
         )
         .await;
@@ -908,6 +909,7 @@ async fn review_guardian_mcp_elicitation(
             approval_request_source: codex_analytics::GuardianApprovalRequestSource::MainTurn,
             external_cancel: Some(cancellation_token),
             require_synchronous_review,
+            denial_handling: crate::guardian::GuardianDenialHandling::RecordImmediately,
         },
     )
     .await;

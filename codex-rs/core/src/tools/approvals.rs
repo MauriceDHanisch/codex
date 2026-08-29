@@ -2,6 +2,7 @@
 
 use crate::command_canonicalization::canonicalize_command_for_approval;
 use crate::exec_policy::prompt_is_rejected_by_policy;
+use crate::guardian::GuardianDenialHandling;
 use crate::guardian::GuardianNetworkAccessTrigger;
 use crate::guardian::GuardianReviewContext;
 use crate::guardian::GuardianReviewOptions;
@@ -603,8 +604,14 @@ impl Session {
 
         match reviewer {
             ApprovalReviewer::Guardian => {
-                let (guardian_decision, guardian_rationale) =
-                    self.request_guardian_approval(action.clone(), ctx).await;
+                let denial_handling = if ctx.strict_auto_review {
+                    GuardianDenialHandling::RecordImmediately
+                } else {
+                    GuardianDenialHandling::DeferUntilUserDecision
+                };
+                let (guardian_decision, guardian_rationale) = self
+                    .request_guardian_approval(action.clone(), ctx, denial_handling)
+                    .await;
                 let review_mode = if ctx.strict_auto_review {
                     GuardianReviewMode::Strict
                 } else {
@@ -621,6 +628,12 @@ impl Session {
                             Some(format!("Automatic review denied this action: {rationale}"));
                     }
                     let decision = self.request_user_approval(&action, &user_ctx).await;
+                    crate::guardian::record_guardian_user_decision(
+                        self,
+                        ctx.review_context.turn(),
+                        &decision,
+                    )
+                    .await;
                     ApprovalResolution {
                         decision,
                         source: ApprovalResolutionSource::User,
@@ -643,6 +656,7 @@ impl Session {
         self: &Arc<Self>,
         action: ApprovalAction,
         ctx: &ApprovalContext,
+        denial_handling: GuardianDenialHandling,
     ) -> (ReviewDecision, Option<String>) {
         // Guardian inherits only the current turn's ready environments. A retained
         // terminal handle may outlive its selection, but must not be reviewed in
@@ -691,6 +705,7 @@ impl Session {
                     approval_request_source: GuardianApprovalRequestSource::MainTurn,
                     external_cancel: Some(cancellation_token.clone()),
                     require_synchronous_review: false,
+                    denial_handling,
                 },
             );
             let decision = review.await.unwrap_or_else(|_| {
@@ -715,6 +730,7 @@ impl Session {
                         approval_request_source: GuardianApprovalRequestSource::MainTurn,
                         external_cancel: Some(review_cancel),
                         require_synchronous_review: false,
+                        denial_handling,
                     },
                 )
                 .await
@@ -735,6 +751,7 @@ impl Session {
                     approval: ctx.approval_reason.clone(),
                     retry: ctx.retry_reason.clone(),
                 },
+                denial_handling,
             )
             .await
         }

@@ -4063,6 +4063,15 @@
           "description": "Syntax highlighting theme name (kebab-case).\n\nWhen set, overrides automatic light/dark theme detection. Use `/theme` in the TUI or see `$CODEX_HOME/themes` for custom themes.",
           "type": "string"
         },
+        "user_message_background": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/UserMessageBackgroundMode"
+            }
+          ],
+          "default": "auto",
+          "description": "Controls the background behind user-authored messages and TUI surfaces.\n\n`auto` derives a subtle surface from the terminal's reported background. `always` falls back to a neutral surface when the terminal cannot report colors, such as through some terminal multiplexers. `never` disables the surface."
+        },
         "vim_mode_default": {
           "default": false,
           "description": "Start the composer in Vim mode (`Normal`) by default. Defaults to `false`.",
@@ -5582,6 +5591,32 @@
           "description": "Option to disable the URI-based file opener.",
           "enum": [
             "none"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "UserMessageBackgroundMode": {
+      "description": "Controls the background behind user-authored messages and TUI surfaces.",
+      "oneOf": [
+        {
+          "description": "Derive the background from the terminal's reported default background.",
+          "enum": [
+            "auto"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Use a neutral fallback surface when terminal color detection is unavailable.",
+          "enum": [
+            "always"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Do not apply a background to user-authored messages or TUI surfaces.",
+          "enum": [
+            "never"
           ],
           "type": "string"
         }

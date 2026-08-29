@@ -32,7 +32,6 @@ use crate::diff_render::display_path_for;
 use crate::diff_render::line_counts;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::SessionInfoCell;
-use crate::history_cell::UserHistoryCell;
 use crate::history_cell::new_patch_event;
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
@@ -203,7 +202,7 @@ impl ChangesOverlay {
         if !session_change.reconstruction_unavailable() {
             let change = adaptive_preview_change(session_change, path, self.cwd.as_path(), area);
             let cell = new_patch_event(HashMap::from([(path.clone(), change)]), self.cwd.as_path());
-            lines.extend(cell.display_lines(area.width));
+            lines.extend(cell.transcript_lines(area.width));
         }
         self.preview = Some(ChangesPreview {
             area,
@@ -605,7 +604,7 @@ fn adaptive_preview_change(
             HashMap::from([(path.to_path_buf(), display_change.clone())]),
             cwd,
         );
-        cell.desired_height(area.width) <= available_height
+        cell.desired_transcript_height(area.width) <= available_height
     })
 }
 
@@ -2666,9 +2665,9 @@ mod tests {
         let short = adaptive_preview_change(change.as_ref(), path, cwd, Rect::new(0, 0, 80, 12));
         let tall = adaptive_preview_change(change.as_ref(), path, cwd, Rect::new(0, 0, 80, 30));
         let short_lines =
-            new_patch_event(HashMap::from([(path.to_path_buf(), short)]), cwd).display_lines(80);
+            new_patch_event(HashMap::from([(path.to_path_buf(), short)]), cwd).transcript_lines(80);
         let tall_lines =
-            new_patch_event(HashMap::from([(path.to_path_buf(), tall)]), cwd).display_lines(80);
+            new_patch_event(HashMap::from([(path.to_path_buf(), tall)]), cwd).transcript_lines(80);
 
         assert!(tall_lines.len() > short_lines.len());
         let tall_text = tall_lines
@@ -2693,7 +2692,7 @@ mod tests {
 
         let preview = adaptive_preview_change(change.as_ref(), path, cwd, area);
         let lines = new_patch_event(HashMap::from([(path.to_path_buf(), preview)]), cwd)
-            .display_lines(area.width);
+            .transcript_lines(area.width);
 
         assert!(lines.len() <= area.height.saturating_sub(5) as usize);
         assert!(

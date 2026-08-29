@@ -767,6 +767,7 @@ impl NetworkApprovalService {
             approval_reason: Some(prompt_reason),
             retry_reason: Some(policy_denial_message.clone()),
             network_approval_context: Some(network_approval_context.clone()),
+            user_approval_mode: crate::tools::UserApprovalMode::Standard,
         };
         let approval_decision = match session.request_approval(action, approval_context).await {
             Ok(decision) => decision,

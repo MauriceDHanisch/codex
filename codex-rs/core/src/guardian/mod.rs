@@ -49,6 +49,7 @@ pub(crate) use review::is_basic_session_source;
 pub(crate) use review::new_guardian_review_id;
 #[cfg(test)]
 pub(crate) use review::record_guardian_denial_for_test;
+#[cfg(test)]
 pub(crate) use review::review_approval_request;
 pub(crate) use review::review_approval_request_with_cancel;
 pub(crate) use review::review_approval_request_with_rationale;

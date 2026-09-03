@@ -65,6 +65,15 @@ pub(crate) trait BottomPaneView: Renderable {
         false
     }
 
+    /// Apply the result of an inline Btw request to the active view.
+    fn apply_btw_response(
+        &mut self,
+        _request_id: uuid::Uuid,
+        _result: Result<String, String>,
+    ) -> bool {
+        false
+    }
+
     /// Active tab id for tabbed list-based views.
     #[allow(dead_code)]
     fn active_tab_id(&self) -> Option<&str> {

@@ -62,6 +62,7 @@ mod app_link_view;
 mod apply_patch_header;
 mod approval_overlay;
 mod hook_status;
+mod btw;
 mod mcp_server_elicitation;
 mod multi_select_picker;
 mod request_user_input;
@@ -85,6 +86,7 @@ pub(crate) use approval_overlay::McpElicitationApprovalRequest;
 pub(crate) use approval_overlay::PermissionsApprovalRequest;
 pub(crate) use approval_overlay::approval_reason_lines;
 pub(crate) use approval_overlay::format_requested_permissions_rule;
+pub(crate) use btw::BtwView;
 pub(crate) use mcp_server_elicitation::McpServerElicitationFormRequest;
 pub(crate) use mcp_server_elicitation::McpServerElicitationOverlay;
 pub(crate) use request_user_input::RequestUserInputOverlay;
@@ -1553,6 +1555,25 @@ impl BottomPane {
             view.enable_vim_in_insert_mode();
         }
         self.push_view(Box::new(view));
+    }
+
+    /// Show an inline Btw question panel with the composer's current editing preferences.
+    pub(crate) fn show_btw_view(&mut self, mut view: BtwView) {
+        view.set_keymap_bindings(&self.keymap);
+        if self.composer_is_vim_enabled() {
+            view.enable_vim_in_insert_mode();
+        }
+        self.push_view(Box::new(view));
+    }
+
+    pub(crate) fn apply_btw_response(
+        &mut self,
+        request_id: uuid::Uuid,
+        result: Result<String, String>,
+    ) -> bool {
+        self.view_stack
+            .last_mut()
+            .is_some_and(|view| view.apply_btw_response(request_id, result))
     }
 
     /// Called when the agent requests user approval.

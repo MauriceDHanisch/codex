@@ -292,6 +292,29 @@ pub(crate) enum AppEvent {
         user_message: Option<UserMessage>,
     },
 
+    /// Ask a non-persistent, tool-free question about the visible conversation.
+    StartBtw {
+        parent_thread_id: ThreadId,
+        request_id: Uuid,
+        question: String,
+    },
+
+    /// Report that the hidden Btw helper thread has been created.
+    BtwThreadStarted {
+        parent_thread_id: ThreadId,
+        request_id: Uuid,
+        prompt: String,
+        effort: Option<ReasoningEffort>,
+        result: Result<String, String>,
+    },
+
+    /// Deliver an inline Btw response to the active chat widget.
+    BtwResponse {
+        parent_thread_id: ThreadId,
+        request_id: Uuid,
+        result: Result<String, String>,
+    },
+
     /// Submit an op to the specified thread, regardless of current focus.
     SubmitThreadOp {
         thread_id: ThreadId,

@@ -49,6 +49,7 @@ impl App {
                 AppEvent::OpenAgentPicker
                     | AppEvent::SelectAgentThread(_)
                     | AppEvent::StartSide { .. }
+                    | AppEvent::StartBtw { .. }
                     | AppEvent::ForkCurrentSession { .. }
                     | AppEvent::ForkSessionForPromptEdit { .. }
                     | AppEvent::SetThreadGoalDraft { .. }
@@ -2654,6 +2655,39 @@ impl App {
                 return self
                     .handle_start_side(tui, app_server, parent_thread_id, user_message)
                     .await;
+            }
+            AppEvent::StartBtw {
+                parent_thread_id,
+                request_id,
+                question,
+            } => {
+                self.start_btw(app_server, parent_thread_id, request_id, question)
+                    .await;
+            }
+            AppEvent::BtwThreadStarted {
+                parent_thread_id,
+                request_id,
+                prompt,
+                effort,
+                result,
+            } => {
+                self.on_btw_thread_started(
+                    app_server,
+                    parent_thread_id,
+                    request_id,
+                    prompt,
+                    effort,
+                    result,
+                );
+            }
+            AppEvent::BtwResponse {
+                parent_thread_id,
+                request_id,
+                result,
+            } => {
+                if self.chat_widget.thread_id() == Some(parent_thread_id) {
+                    self.chat_widget.apply_btw_response(request_id, result);
+                }
             }
             AppEvent::OpenSkillsList => {
                 self.chat_widget.open_skills_list();

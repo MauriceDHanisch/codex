@@ -126,6 +126,19 @@ impl ChatWidget {
         self.request_side_conversation(parent_thread_id, /*user_message*/ None);
     }
 
+    fn request_btw(&mut self, parent_thread_id: ThreadId, question: String) {
+        self.open_btw_prompt(parent_thread_id, question);
+    }
+
+    fn request_empty_btw(&mut self) {
+        let Some(parent_thread_id) = self.thread_id else {
+            self.add_error_message("'/btw' is unavailable before the session starts.".to_string());
+            return;
+        };
+
+        self.request_btw(parent_thread_id, String::new());
+    }
+
     fn emit_raw_output_mode_changed(&self, enabled: bool) {
         self.app_event_tx
             .send(AppEvent::RawOutputModeChanged { enabled });
@@ -319,9 +332,10 @@ impl ChatWidget {
                     );
                 }
             }
-            SlashCommand::Side | SlashCommand::Btw => {
+            SlashCommand::Side => {
                 self.request_empty_side_conversation(cmd);
             }
+            SlashCommand::Btw => self.request_empty_btw(),
             SlashCommand::Agents => {
                 self.app_event_tx.send(AppEvent::OpenAgentsOverview);
             }
@@ -949,7 +963,7 @@ impl ChatWidget {
                     self.clear_live_goal_submission();
                 }
             }
-            SlashCommand::Side | SlashCommand::Btw if !trimmed.is_empty() => {
+            SlashCommand::Side if !trimmed.is_empty() => {
                 let Some(parent_thread_id) = self.thread_id else {
                     let command = cmd.command();
                     self.add_error_message(format!(
@@ -966,6 +980,15 @@ impl ChatWidget {
                     source,
                 );
                 self.request_side_conversation(parent_thread_id, Some(user_message));
+            }
+            SlashCommand::Btw if !trimmed.is_empty() => {
+                let Some(parent_thread_id) = self.thread_id else {
+                    self.add_error_message(
+                        "'/btw' is unavailable before the session starts.".to_string(),
+                    );
+                    return;
+                };
+                self.request_btw(parent_thread_id, args.trim().to_string());
             }
             SlashCommand::Review if !trimmed.is_empty() => {
                 self.submit_op(AppCommand::review(ReviewTarget::Custom {
@@ -1245,7 +1268,7 @@ impl ChatWidget {
     }
 
     fn ensure_side_command_allowed_outside_review(&mut self, cmd: SlashCommand) -> bool {
-        if !matches!(cmd, SlashCommand::Side | SlashCommand::Btw) || !self.review.is_review_mode {
+        if cmd != SlashCommand::Side || !self.review.is_review_mode {
             return true;
         }
 

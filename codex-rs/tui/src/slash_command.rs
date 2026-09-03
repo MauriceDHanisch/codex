@@ -133,9 +133,8 @@ impl SlashCommand {
             SlashCommand::Goal => "set or view the goal for a long-running task",
             SlashCommand::Agents => "view and switch between all active agent sessions",
             SlashCommand::MultiAgents => "switch between this session's subagents",
-            SlashCommand::Side | SlashCommand::Btw => {
-                "start a side conversation in an ephemeral fork"
-            }
+            SlashCommand::Side => "start a side conversation in an ephemeral fork",
+            SlashCommand::Btw => "ask about the current conversation without adding to it",
             SlashCommand::Permissions => "choose what Codex is allowed to do",
             SlashCommand::Keymap => "remap TUI shortcuts",
             SlashCommand::Vim => "toggle Vim mode for the composer",
@@ -332,5 +331,14 @@ mod tests {
             SlashCommand::from_str("approve"),
             Ok(SlashCommand::AutoReview)
         );
+    }
+
+    #[test]
+    fn side_and_btw_have_distinct_descriptions() {
+        assert_ne!(
+            SlashCommand::Side.description(),
+            SlashCommand::Btw.description()
+        );
+        assert!(SlashCommand::Btw.description().contains("without adding"));
     }
 }

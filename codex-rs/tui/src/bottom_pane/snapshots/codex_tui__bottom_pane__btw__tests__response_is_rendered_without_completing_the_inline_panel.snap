@@ -1,0 +1,30 @@
+---
+source: tui/src/bottom_pane/btw_tests.rs
+expression: "format!(\"{buffer:?}\")"
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 60, height: 7 },
+    content: [
+        "▌ btw                                                       ",
+        "  you: what changed?                                        ",
+        "  btw: Two files changed.                                   ",
+        "▌                                                           ",
+        "▌ Ask about the current conversation                        ",
+        "                                                            ",
+        "Press enter to ask or esc to close                          ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
+        x: 2, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 5, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 3, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
+        x: 2, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 4, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
+        x: 2, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 36, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 6, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 11, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 22, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 25, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

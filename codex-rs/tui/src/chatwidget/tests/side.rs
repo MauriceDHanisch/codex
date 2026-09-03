@@ -174,30 +174,16 @@ async fn slash_side_is_rejected_during_review_mode() {
 }
 
 #[tokio::test]
-async fn slash_btw_is_rejected_during_review_mode() {
+async fn slash_btw_opens_inline_panel_during_review_mode() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
     chat.review.is_review_mode = true;
 
     chat.dispatch_command(SlashCommand::Btw);
 
-    let event = rx
-        .try_recv()
-        .expect("expected review-mode btw conversation error");
-    match event {
-        AppEvent::InsertHistoryCell(cell) => {
-            let rendered = lines_to_single_string(&cell.display_lines(/*width*/ 80));
-            assert!(
-                rendered.contains("'/btw' is unavailable while code review is running."),
-                "expected review-mode btw conversation error, got {rendered:?}"
-            );
-        }
-        other => panic!("expected InsertHistoryCell error, got {other:?}"),
-    }
-    assert!(rx.try_recv().is_err(), "expected no follow-up events");
-    assert!(
-        op_rx.try_recv().is_err(),
-        "expected no side conversation op"
-    );
+    assert_eq!(chat.bottom_pane.active_view_id(), Some("btw"));
+    assert!(rx.try_recv().is_err(), "expected no request before input");
+    assert!(op_rx.try_recv().is_err(), "expected no parent-thread op");
 }
 
 #[tokio::test]
@@ -273,7 +259,7 @@ async fn slash_side_without_args_starts_empty_side_conversation() {
 }
 
 #[tokio::test]
-async fn slash_btw_without_args_starts_empty_side_conversation() {
+async fn slash_btw_without_args_opens_inline_panel() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let parent_thread_id = ThreadId::new();
     chat.thread_id = Some(parent_thread_id);
@@ -283,13 +269,8 @@ async fn slash_btw_without_args_starts_empty_side_conversation() {
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_matches!(
-        rx.try_recv(),
-        Ok(AppEvent::StartSide {
-            parent_thread_id: emitted_parent_thread_id,
-            user_message: None,
-        }) if emitted_parent_thread_id == parent_thread_id
-    );
+    assert_eq!(chat.bottom_pane.active_view_id(), Some("btw"));
+    assert!(rx.try_recv().is_err(), "bare /btw waits for a question");
     assert!(
         op_rx.try_recv().is_err(),
         "bare /btw should not submit an op on the parent thread"
@@ -347,7 +328,7 @@ async fn slash_side_requests_forked_side_question_while_task_running() {
 }
 
 #[tokio::test]
-async fn slash_btw_requests_forked_side_question_while_task_running() {
+async fn slash_btw_requests_inline_question_while_task_running() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let parent_thread_id = ThreadId::new();
     chat.thread_id = Some(parent_thread_id);
@@ -360,21 +341,12 @@ async fn slash_btw_requests_forked_side_question_while_task_running() {
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_matches!(
-        rx.try_recv(),
-        Ok(AppEvent::StartSide {
-            parent_thread_id: emitted_parent_thread_id,
-            user_message: Some(user_message),
-        }) if emitted_parent_thread_id == parent_thread_id
-            && user_message
-                == UserMessage {
-                    text: "explore the codebase".to_string(),
-                    local_images: Vec::new(),
-                    remote_image_urls: Vec::new(),
-                    text_elements: Vec::new(),
-                    mention_bindings: Vec::new(),
-                }
-    );
+    assert_matches!(rx.try_recv(), Ok(AppEvent::StartBtw {
+        parent_thread_id: emitted_parent_thread_id,
+        question,
+        ..
+    }) if emitted_parent_thread_id == parent_thread_id && question == "explore the codebase");
+    assert_eq!(chat.bottom_pane.active_view_id(), Some("btw"));
     assert!(
         op_rx.try_recv().is_err(),
         "expected no op on the parent thread"

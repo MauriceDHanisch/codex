@@ -8,7 +8,7 @@ use crate::guardian::GuardianReviewContext;
 use crate::guardian::GuardianReviewOptions;
 use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
-use crate::guardian::review_approval_request_with_cancel;
+use crate::guardian::review_approval_request_with_cancel_and_rationale;
 use crate::guardian::review_approval_request_with_rationale;
 use crate::guardian::routes_approval_policy_to_guardian;
 use crate::guardian::spawn_approval_request_review;
@@ -708,10 +708,12 @@ impl Session {
                     denial_handling,
                 },
             );
-            let decision = review.await.unwrap_or_else(|_| {
-                ReviewDecision::denied("automatic approval review could not complete")
-            });
-            (decision, None)
+            review.await.unwrap_or_else(|_| {
+                (
+                    ReviewDecision::denied("automatic approval review could not complete"),
+                    None,
+                )
+            })
         } else if is_network_approval {
             let review_cancel = CancellationToken::new();
             let review_cancel_guard = review_cancel.clone().drop_guard();
@@ -719,7 +721,7 @@ impl Session {
             let review_context = ctx.review_context.clone();
             let retry_reason = ctx.retry_reason.clone();
             let review = tokio::spawn(async move {
-                review_approval_request_with_cancel(
+                review_approval_request_with_cancel_and_rationale(
                     &review_session,
                     review_context,
                     review_id,
@@ -735,12 +737,15 @@ impl Session {
                 )
                 .await
             });
-            let decision = review.await.unwrap_or_else(|err| {
+            let (decision, rationale) = review.await.unwrap_or_else(|err| {
                 warn!("network Guardian review task failed: {err}");
-                ReviewDecision::denied("automatic approval review could not complete")
+                (
+                    ReviewDecision::denied("automatic approval review could not complete"),
+                    None,
+                )
             });
             drop(review_cancel_guard.disarm());
-            (decision, None)
+            (decision, rationale)
         } else {
             review_approval_request_with_rationale(
                 self,

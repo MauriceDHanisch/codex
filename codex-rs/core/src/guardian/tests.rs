@@ -3320,6 +3320,53 @@ async fn guardian_review_does_not_retry_valid_denial() -> anyhow::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn spawned_guardian_review_preserves_denial_rationale() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let rationale = "The command would push the reviewed branch to a remote.";
+    let denial = serde_json::json!({
+        "risk_level": "high",
+        "user_authorization": "unknown",
+        "outcome": "deny",
+        "rationale": rationale,
+    })
+    .to_string();
+    let request_log = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-spawned-denial"),
+            ev_assistant_message("msg-spawned-denial", &denial),
+            ev_completed("resp-spawned-denial"),
+        ]),
+    )
+    .await;
+    let (session, turn) = guardian_test_session_and_turn(&server).await;
+    seed_guardian_parent_history(&session, &turn).await;
+
+    let review = spawn_approval_request_review(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        "review-spawned-denial".to_string(),
+        guardian_exec_command_request("shell-spawned-denial"),
+        ApprovalRequestReasons::default(),
+        GuardianReviewOptions {
+            plugin_attribution_override: None,
+            approval_request_source: GuardianApprovalRequestSource::MainTurn,
+            external_cancel: Some(CancellationToken::new()),
+            require_synchronous_review: false,
+            denial_handling: GuardianDenialHandling::DeferUntilUserDecision,
+        },
+    );
+    let (decision, returned_rationale) = review.await?;
+
+    assert!(matches!(decision, ReviewDecision::Denied { .. }));
+    assert_eq!(returned_rationale.as_deref(), Some(rationale));
+    assert_eq!(request_log.requests().len(), 1);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn escalated_retry_bypasses_extension_approval_and_runs_guardian() -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));
 

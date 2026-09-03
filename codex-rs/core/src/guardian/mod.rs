@@ -56,6 +56,7 @@ pub(crate) use review::record_guardian_user_decision;
 #[cfg(test)]
 pub(crate) use review::review_approval_request;
 pub(crate) use review::review_approval_request_with_cancel;
+pub(crate) use review::review_approval_request_with_cancel_and_rationale;
 pub(crate) use review::review_approval_request_with_rationale;
 pub(crate) use review::routes_approval_policy_to_guardian;
 pub(crate) use review::routes_approval_to_guardian;

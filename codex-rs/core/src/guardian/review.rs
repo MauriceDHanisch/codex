@@ -894,6 +894,26 @@ pub(crate) async fn review_approval_request_with_cancel(
     retry_reason: Option<String>,
     options: GuardianReviewOptions,
 ) -> ReviewDecision {
+    let (decision, _) = review_approval_request_with_cancel_and_rationale(
+        session,
+        context,
+        review_id,
+        request,
+        retry_reason,
+        options,
+    )
+    .await;
+    decision
+}
+
+pub(crate) async fn review_approval_request_with_cancel_and_rationale(
+    session: &Arc<Session>,
+    context: impl Into<GuardianReviewContext>,
+    review_id: String,
+    request: GuardianApprovalRequest,
+    retry_reason: Option<String>,
+    options: GuardianReviewOptions,
+) -> (ReviewDecision, Option<String>) {
     let review: BoxFuture<'_, (ReviewDecision, Option<String>)> = Box::pin(run_guardian_review(
         Arc::clone(session),
         context.into(),
@@ -905,8 +925,7 @@ pub(crate) async fn review_approval_request_with_cancel(
         },
         options,
     ));
-    let (decision, _) = review.await;
-    decision
+    review.await
 }
 
 pub(crate) fn spawn_approval_request_review(
@@ -916,7 +935,7 @@ pub(crate) fn spawn_approval_request_review(
     request: GuardianApprovalRequest,
     reasons: ApprovalRequestReasons,
     options: GuardianReviewOptions,
-) -> oneshot::Receiver<ReviewDecision> {
+) -> oneshot::Receiver<(ReviewDecision, Option<String>)> {
     let context = context.into();
     let (tx, rx) = oneshot::channel();
     let runtime = session.services.runtime_handle.clone();
@@ -924,10 +943,10 @@ pub(crate) fn spawn_approval_request_review(
         .name("codex-approval-review".to_string())
         .stack_size(THREAD_STACK_SIZE_BYTES)
         .spawn(move || {
-            let (decision, _) = runtime.block_on(run_guardian_review(
+            let result = runtime.block_on(run_guardian_review(
                 session, context, review_id, request, reasons, options,
             ));
-            let _ = tx.send(decision);
+            let _ = tx.send(result);
         });
     if let Err(err) = spawn_result {
         tracing::error!(%err, "failed to spawn automatic approval review worker");

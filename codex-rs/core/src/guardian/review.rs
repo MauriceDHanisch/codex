@@ -371,9 +371,9 @@ async fn run_guardian_review(
             .as_ref()
             .is_some_and(CancellationToken::is_cancelled)
         {
-            ReviewDecision::Abort
+            (ReviewDecision::Abort, None)
         } else {
-            ReviewDecision::Approved
+            (ReviewDecision::Approved, None)
         };
     }
     let requires_synchronous_review = options.require_synchronous_review

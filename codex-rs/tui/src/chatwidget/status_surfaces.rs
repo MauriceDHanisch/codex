@@ -224,10 +224,10 @@ impl ChatWidget {
             }
         }
 
-        self.set_status_line(status_line_from_segments(
-            segments,
-            self.config.tui_status_line_use_colors,
-        ));
+        self.set_status_line(
+            status_line_from_segments(segments, self.config.tui_status_line_use_colors)
+                .map(|line| vec![line]),
+        );
         let hyperlink_url = selections
             .status_line_items
             .contains(&StatusLineItem::PullRequestNumber)

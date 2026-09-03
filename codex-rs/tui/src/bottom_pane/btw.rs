@@ -126,24 +126,36 @@ impl BtwView {
     }
 
     fn history_lines(&self, width: u16) -> Vec<Line<'static>> {
-        let width = usize::from(width.max(1));
+        let width = usize::from(width.saturating_sub(2).max(1));
         let mut lines = Vec::new();
         for exchange in &self.exchanges {
-            let question = format!("you: {}", exchange.question);
+            let question = Line::from(vec![
+                "you:".cyan().bold(),
+                " ".into(),
+                exchange.question.clone().into(),
+            ]);
             lines.extend(word_wrap_lines([question], width));
             match &exchange.answer {
                 Ok(answer) => {
-                    let answer = format!("btw: {answer}");
+                    let answer = Line::from(vec![
+                        "btw:".white().bold(),
+                        " ".into(),
+                        answer.clone().into(),
+                    ]);
                     lines.extend(word_wrap_lines([answer], width));
                 }
                 Err(error) => {
-                    let error = format!("btw error: {error}");
+                    let error = Line::from(vec![
+                        "btw:".white().bold(),
+                        " ".into(),
+                        format!("error: {error}").red(),
+                    ]);
                     lines.extend(word_wrap_lines([error], width));
                 }
             }
         }
         if self.pending.is_some() {
-            lines.push(Line::from("btw: thinking…".dim()));
+            lines.push(Line::from(vec!["btw:".white().bold(), " thinking…".dim()]));
         }
         if lines.len() > MAX_RENDERED_HISTORY_LINES {
             lines.drain(..lines.len() - MAX_RENDERED_HISTORY_LINES);
@@ -257,11 +269,11 @@ impl BottomPaneView for BtwView {
 impl Renderable for BtwView {
     fn desired_height(&self, width: u16) -> u16 {
         let history_height = self.history_lines(width).len() as u16;
-        1 + history_height + self.input_height(width) + 2
+        2 + history_height + self.input_height(width) + 2
     }
 
     fn cursor_pos(&self, area: Rect) -> Option<(u16, u16)> {
-        if area.height < 2 || area.width <= 2 {
+        if area.height < 3 || area.width <= 2 {
             return None;
         }
         let history_height = self.history_lines(area.width).len() as u16;
@@ -274,6 +286,7 @@ impl Renderable for BtwView {
             x: area.x.saturating_add(2),
             y: area
                 .y
+                .saturating_add(1)
                 .saturating_add(1)
                 .saturating_add(history_height)
                 .saturating_add(1),
@@ -300,12 +313,33 @@ impl Renderable for BtwView {
             buf,
         );
 
+        Paragraph::new(Line::from("━".repeat(usize::from(area.width)).cyan())).render(
+            Rect {
+                x: area.x,
+                y: area.y.saturating_add(1),
+                width: area.width,
+                height: 1,
+            },
+            buf,
+        );
+
         let history = self.history_lines(area.width);
         for (offset, line) in history.iter().enumerate() {
+            if area.width >= 2 {
+                Paragraph::new(Line::from(vec!["▌ ".cyan()])).render(
+                    Rect {
+                        x: area.x,
+                        y: area.y.saturating_add(2 + offset as u16),
+                        width: 2,
+                        height: 1,
+                    },
+                    buf,
+                );
+            }
             Paragraph::new(line.clone()).render(
                 Rect {
                     x: area.x.saturating_add(2),
-                    y: area.y.saturating_add(1 + offset as u16),
+                    y: area.y.saturating_add(2 + offset as u16),
                     width: area.width.saturating_sub(2),
                     height: 1,
                 },
@@ -316,6 +350,7 @@ impl Renderable for BtwView {
         let input_height = self.input_height(area.width);
         let input_y = area
             .y
+            .saturating_add(1)
             .saturating_add(1)
             .saturating_add(history.len() as u16);
         let input_area = Rect {

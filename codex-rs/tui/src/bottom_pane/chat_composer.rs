@@ -5096,6 +5096,7 @@ mod effort_tests;
 #[cfg(test)]
 #[path = "chat_composer/prompt_stash_tests.rs"]
 mod prompt_stash_tests;
+#[cfg(test)]
 mod tests {
     use super::attachment_state::AttachedImage;
     use super::*;
